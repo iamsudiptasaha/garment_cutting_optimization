@@ -1,0 +1,348 @@
+{
+  "history": [
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 0,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 1,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 2,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 3,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 4,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 5,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 6,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 7,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 8,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 9,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 10,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 11,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 12,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 13,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 14,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 15,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 16,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 17,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 18,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 19,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 20,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 21,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 22,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 23,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 24,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 25,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 26,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 27,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 28,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 29,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 30,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 31,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 32,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 33,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 34,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 35,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 36,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 37,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 38,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 39,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 40,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    },
+    {
+      "marker_id": "TEST_MARKER",
+      "iteration": 41,
+      "height": 54.947556910322305,
+      "used_area": 1271.6030153499432,
+      "total_area": 1978.112048771603,
+      "empty_ratio": 0.35716330319124145
+    }
+  ],
+  "best": {
+    "marker_id": "TEST_MARKER",
+    "iteration": 0,
+    "height": 54.947556910322305,
+    "used_area": 1271.6030153499432,
+    "total_area": 1978.112048771603,
+    "empty_ratio": 0.35716330319124145
+  }
+}
