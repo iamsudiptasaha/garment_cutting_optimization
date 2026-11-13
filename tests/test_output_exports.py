@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from struct import unpack
 from xml.etree import ElementTree as ET
 
 import pytest
-from struct import unpack
 
 from garment_nesting.cli import main
 from garment_nesting.input.svg import SVG_NS, inspect_svg
