@@ -185,15 +185,21 @@ def validate_certificate(manifest: dict, certificate: dict) -> dict:
             "placed_pieces": sum(seen.values()),
             "fabric_width_in": width,
         }
-    length = max(poly.bounds[3] for _, poly in placed)
+    # Fabric consumed is the occupied longitudinal span, independent of
+    # where the solver positions the arrangement within its search strip.
+    length = max(poly.bounds[3] for _, poly in placed) - min(
+        poly.bounds[1] for _, poly in placed
+    )
     area = manifest["piece_area_sq_in"]
+    fabric_area = width * length
     return {
         "status": "FEASIBLE",
         "fabric_width_in": width,
         "fabric_length_consumed_in": length,
-        "fabric_area_sq_in": width * length,
+        "fabric_area_sq_in": fabric_area,
         "piece_area_sq_in": area,
-        "utilization_pct": 100 * area / (width * length),
+        "wastage_pct": 100 * (fabric_area - area) / fabric_area,
+        "utilization_pct": 100 * area / fabric_area,
         "required_pieces": sum(required.values()),
         "placed_pieces": sum(seen.values()),
         "placements": [

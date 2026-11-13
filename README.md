@@ -78,9 +78,14 @@ There is no fabric-length input; `open-dimension-y` minimizes the
 Outputs are `trial.instance.json` (solver input), `trial.manifest.json`
 (piece-to-ID mapping), `trial.solution.json` (solver certificate) and
 `trial.report.json` (validated placements, length consumed in inches,
-utilization and counts). The height in the solver input is a generous internal
-search ceiling, not a requested fabric length. A complete solution is reported
-only after all required pieces pass an independent overlap/width check.
+fabric wastage percentage, utilization and counts). The height in the solver input is a generous internal
+search ceiling, not a requested fabric length. Fabric length consumed is
+`max(piece_end_y) - min(piece_start_y)`, in inches, independent of any blank
+space before the layout. Wastage is `(fabric_width_in * length_consumed_in -
+ total_piece_area_sq_in) / (fabric_width_in * length_consumed_in) * 100`,
+where the piece area is the sum of the actual polygon areas (not bounding
+rectangles). A complete solution is reported only after all required pieces
+pass an independent overlap/width check.
 
 If you only want to create solver input without optimization, this also works
 with Python 3.11 and the geometry dependencies:
