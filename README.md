@@ -23,8 +23,28 @@ python -m ruff check src tests
 python -m garment_nesting.cli --version
 ```
 
-Install the optional planned geometry libraries with `python -m pip install -e '.[dev,geometry]'`.
-No solver is installed or integrated in Phase 0.
+Install the geometry dependencies with `python -m pip install -e '.[dev,geometry]'`.
+No nesting solver is installed or integrated yet.
+
+### Geometry reports
+
+```bash
+# JSON audit of areas, bounds, topology and any bounded repairs
+garment-nesting audit samples/FC_HH_Full_Pyjama.svg --output geometry-audit.json
+
+# Compare polygon resolution; returns code 2 if any verification fails
+garment-nesting verify samples/FC_HH_Full_Pyjama.svg --output geometry-verification.json
+```
+
+A `valid: true` geometry entry may have `repaired: true`. This means the
+approximate polygon had a small self-touch and Shapely recovered a **single**
+polygon with no holes, less than 0.25 mm of residual linework and boundary
+change, and less than 0.001% area change. Every repair includes
+`repair_details`. Larger spikes, bowties, separate polygons and major outline
+changes remain errors. Original SVG paths and labels are **never edited**.
+
+Verification measures numerical stability across two polygon resolutions; it is
+**not** an exact Bézier-distance proof or a cutter-ready nesting validation.
 
 ## Milestones
 - Phase 0: packaging, fixture, smoke tests, CI.
