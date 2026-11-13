@@ -34,7 +34,6 @@ def main(argv: list[str] | None = None) -> int:
     nest.add_argument("--clearance-in", type=float, default=0.04)
     nest.add_argument("--one-way", action="store_true")
     nest.add_argument("--time-limit", type=int, default=30)
-    nest.add_argument("--solver-binary", default="packingsolver_irregular")
     nest.add_argument("--output-prefix", default="nesting")
     args = parser.parse_args(argv)
     if args.command == "audit":
@@ -91,21 +90,20 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Prepared {manifest['required_pieces']} pieces; width {manifest['fabric_width_in']} in")
         if args.command == "prepare":
             return 0
-        import subprocess
-
         if args.time_limit <= 0:
             parser.error("--time-limit must be positive")
         certificate_path = f"{prefix}.solution.json"
         try:
-            subprocess.run(
-                [args.solver_binary, "--input", instance_path,
-                 "--time-limit", str(args.time_limit), "--certificate", certificate_path],
-                check=True, timeout=args.time_limit + 30,
-            )
-        except FileNotFoundError as exc:
-            parser.error(f"PackingSolver not installed: {exc}. Use 'prepare' to export its JSON.")
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
-            parser.error(f"Solver did not finish normally: {exc}")
+            import packingsolver.irregular as psi
+        except ImportError:
+            parser.error('The solver requires Python >=3.12 and pip install -e ".[solver]"')
+        builder = psi.InstanceBuilder()
+        builder.read(instance_path)
+        solver_instance = builder.build()
+        parameters = psi.OptimizeParameters()
+        parameters.time_limit = args.time_limit
+        output = psi.optimize(solver_instance, parameters)
+        output.solution.write(certificate_path)
         if not Path(certificate_path).exists():
             print("NOT_FOUND: solver produced no solution certificate")
             return 2
