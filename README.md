@@ -62,8 +62,8 @@ input/                            Source SVG files (not modified)
 src/garment_nesting/input/        SVG parsing and inventory
 src/garment_nesting/processor/    PackingSolver adapter, optimization, validation
 src/garment_nesting/geometry/     Processor's polygon utilities
-src/garment_nesting/output/       Exact-path SVG export and continuous PNG preview
-output/                           Generated SVG, PNG and JSON (ignored by Git)
+src/garment_nesting/output/       annotated SVG export and continuous PNG/JPEG previews
+output/                           Generated SVG, PNG, JPEG and JSON (ignored by Git)
 ```
 
 Input and export modules are intended to remain stable while we tune the
@@ -92,8 +92,9 @@ There is no fabric-length input; `open-dimension-y` minimizes the
 Outputs are `trial.instance.json` (solver input), `trial.manifest.json`
 (piece-to-ID mapping), `trial.solution.json` (solver certificate),
 `trial.report.json` (validated lengths, wastage and placements),
-`trial.nested.svg` (editable vector layout) and `trial.nested.pdf`
-(true-size continuous PNG preview). The height in the solver input is a generous internal
+`trial.nested.svg` (editable annotated vector layout),
+`trial.nested.png` (one lossless long image) and
+`trial.nested.jpg` (one JPEG for phone sharing). The height in the solver input is a generous internal
 search ceiling, not a requested fabric length. Fabric length consumed is
 `max(piece_end_y) - min(piece_start_y)`, in inches, independent of any blank
 space before the layout. Wastage is `(fabric_width_in * length_consumed_in -
@@ -110,8 +111,8 @@ garment-nesting prepare "samples/FC_HH_Full_Pyjama.svg" \
   --fabric-width-in 60 --output-prefix trial
 ```
 
-The `nest` command now exports `output/nesting.nested.svg` and
-`output/nesting.nested.png` in addition to its JSON files. It **does not**
+The `nest` command now exports `output/nesting.nested.svg`,
+`output/nesting.nested.png` and `output/nesting.nested.jpg` alongside JSON. It **does not**
 redraw original shapes as polygons: the source Bézier paths and grouped
 text are retained, with placement transforms applied to each group.
 
@@ -131,13 +132,35 @@ garment-nesting render "input/your-pattern.svg" \
   --report output/nesting.report.json
 ```
 
-The PNG is one continuous scrollable image (no pages or cuts), intended for
-sharing with floor operators. It defaults to 72 preview pixels per inch
-(`--preview-ppi` is configurable), and is automatically scaled down only
-when needed to respect image-size limits. If a very long image would become
-unreadable, export fails rather than silently reducing its resolution further.
-The editable SVG remains the full-length, physically accurate cutting master.
-All fabric measurements in reports remain in inches or square inches.
+The output SVG keeps original Bézier curves, group IDs and text labels. It has
+a separate `fabric-guide` layer with a clearly outlined fabric rectangle,
+dimension brackets, fabric width and **length consumed** in inches, wastage,
+utilization, and piece count. Its canvas includes annotation margins **outside**
+the precisely measured fabric rectangle: use `fabric-boundary` as the fabric
+measurement, rather than the larger annotated page size.
+
+The PNG and JPEG show the **same single continuous strip**, never separate
+pages. Both render at **3000 pixels wide by default** (`--preview-width-px`
+can be set to 3600, 4000 or another value). Text/lines are vector rendered
+at the target resolution; JPEG uses quality 92 with no chroma subsampling.
+The image is for viewing and sharing, not physical-scale cutting.
+For extremely long layouts, an explicit error is returned if one high-quality
+image would exceed the image-size limit; there is no silent quality reduction.
+To avoid WhatsApp recompressing the operator JPEG, share it as a document.
+
+To rerender a saved solution without running the solver again:
+
+```bash
+python -m garment_nesting.cli render "samples/FC_HH_Full_Pyjama.svg" \
+  --manifest output/nesting.manifest.json \
+  --report output/nesting.report.json \
+  --preview-width-px 3000
+```
+
+On macOS, CairoSVG requires Homebrew's Cairo library. If the command-line
+launcher cannot find it, run `brew install cairo`, export
+`DYLD_FALLBACK_LIBRARY_PATH="$(brew --prefix cairo)/lib"`, and invoke
+`python -m garment_nesting.cli`.
 
 
 ## Milestones
