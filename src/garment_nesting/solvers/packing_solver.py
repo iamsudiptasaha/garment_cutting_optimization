@@ -161,13 +161,13 @@ def validate_certificate(manifest: dict, certificate: dict) -> dict:
             raise ValueError(f"Mirroring is prohibited for item {idx}")
         x, y = item.get("x"), item.get("y")
         if not isinstance(x, (int, float)) or not isinstance(y, (int, float)):
-            raise ValueError(f"Invalid coordinates for item {idx}")
+            raise TypeError(f"Invalid coordinates for item {idx}")
         if not isfinite(x) or not isfinite(y):
             raise ValueError(f"Nonfinite placement for item {idx}")
         source = Polygon([(p["x"], p["y"]) for p in items_by_id[idx]["vertices"]])
         position = translate(rotate(source, angle, origin=(0, 0)),
                              xoff=x, yoff=y)
-        min_x, min_y, max_x, max_y = position.bounds
+        min_x, min_y, max_x, _ = position.bounds
         if min_x < -1e-5 or max_x > width + 1e-5 or min_y < -1e-5:
             raise ValueError(f"Piece {idx} extends beyond the fabric bounds")
         for prior_id, prior in placed:
