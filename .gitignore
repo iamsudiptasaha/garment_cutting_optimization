@@ -9,3 +9,8 @@ build/
 coverage.xml
 .coverage
 .DS_Store
+
+# User input SVGs and generated nesting outputs
+/input/*.svg
+/output/*
+!/output/.gitkeep
