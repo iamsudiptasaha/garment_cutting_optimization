@@ -59,6 +59,56 @@ boundary containment. It does not prove symmetric shape equivalence, original
 topology, or that the original filled path is entirely inside the polygon's
 buffer. Never label a nested layout cutter-safe from this check alone.
 
+## Phase 3: first packing adapter (inches)
+
+The fabric width is always entered in **inches**. Source SVG dimensions are
+converted from millimetres automatically. The drawing must already have all
+cutting pieces aligned with the intended fabric grain direction (vertical/Y).
+
+The following command builds an instance for PackingSolver's irregular
+**open-dimension-y** objective:
+
+```bash
+python -m pip install -e '.[dev,geometry]'
+garment-nesting prepare "samples/FC_HH_Full_Pyjama.svg" \
+  --fabric-width-in 60 --output-prefix trial
+```
+
+This produces \`trial.instance.json\` (PackingSolver-compatible) and
+\`trial.manifest.json\` (source IDs, inch dimensions and validation shapes).
+The height field inside the solver input is only a generous *search ceiling*,
+not a requested marker length or a fabric-length input.
+
+If you have separately installed the \`packingsolver_irregular\` command-line
+solver, optimize and validate in one step:
+
+```bash
+garment-nesting nest "samples/FC_HH_Full_Pyjama.svg" \
+  --fabric-width-in 60 --clearance-in 0.04 \
+  --time-limit 30 --output-prefix trial
+```
+
+The \`nest\` command writes a solution certificate and a validated JSON
+report containing \`fabric_length_consumed_in\`, \`utilization_pct\`, and
+piece placements. If no complete solution was found, it returns \`NOT_FOUND\`
+rather than pretending omitted pieces are a valid arrangement.
+
+To validate an existing certificate without running the solver:
+
+```bash
+garment-nesting evaluate --manifest trial.manifest.json \
+  --certificate trial.solution.json --output trial.report.json
+```
+
+Only 0° and 180° rotations are permitted; use \`--one-way\` to permit only
+0°. Mirroring is always forbidden. Current certificate checks cover piece
+counts, rotation, fabric width, clearance, and polygon overlap. The native
+editable SVG output is a *later step* and is not produced here.
+
+**Solver availability:** The external \`packingsolver_irregular\` executable is
+not bundled by this project. \`prepare\` and \`evaluate\` work without it; the
+\`nest\` command requires the executable on PATH (or \`--solver-binary\`).
+
 ## Milestones
 - Phase 0: packaging, fixture, smoke tests, CI.
 - Phase 1: import SVG groups, outlines, text and transforms.
