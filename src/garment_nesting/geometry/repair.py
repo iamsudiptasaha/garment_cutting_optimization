@@ -59,8 +59,18 @@ def normalize_polygon(
     if len(polygons) != 1:
         raise ValueError(f"{reason}: repair produced {len(polygons)} polygons; rejected")
     polygon = polygons[0]
-    if not polygon.is_valid or polygon.is_empty or polygon.area <= 0 or polygon.interiors:
-        raise ValueError(f"{reason}: repair produced invalid geometry or a hole")
+    if not polygon.is_valid or polygon.is_empty or polygon.area <= 0:
+        raise ValueError(f"{reason}: repair produced invalid geometry")
+    if polygon.interiors:
+        hole_perimeter = sum(ring.length for ring in polygon.interiors)
+        hole_area = sum(Polygon(ring).area for ring in polygon.interiors)
+        if hole_perimeter > max_remnant_length or hole_area > max_remnant_length**2:
+            raise ValueError(
+                f"{reason}: repair produced non-microscopic holes "
+                f"(perimeter={hole_perimeter:.6f}, area={hole_area:.8f})"
+            )
+        remnant_length += hole_perimeter
+        polygon = Polygon(polygon.exterior)
     area_delta = abs(source.area - polygon.area) / source.area * 100
     deviation = source.boundary.hausdorff_distance(polygon.boundary)
     if (
