@@ -73,6 +73,7 @@ def test_certificate_reports_consumed_fabric_length():
     assert result["placed_pieces"] == 2
     assert result["fabric_area_sq_in"] == 12
     assert result["utilization_pct"] == pytest.approx(66.66666667)
+    assert result["wastage_pct"] == pytest.approx(33.33333333)
 
 
 @pytest.mark.parametrize("x,match", [
@@ -150,3 +151,24 @@ def test_native_packingsolver_smoke(tmp_path):
     report = validate_certificate(manifest, solved)
     assert report["status"] == "FEASIBLE"
     assert report["required_pieces"] == 1
+
+
+def test_consumed_length_ignores_leading_empty_strip():
+    manifest, certificate = _fixture()
+    for piece in certificate["bins"][0]["items"]:
+        piece["y"] += 10
+    result = validate_certificate(manifest, certificate)
+    assert result["fabric_length_consumed_in"] == pytest.approx(2)
+    assert result["fabric_area_sq_in"] == pytest.approx(12)
+    assert result["wastage_pct"] == pytest.approx(100 * (12 - 8) / 12)
+
+
+def test_longitudinal_gap_increases_consumed_length_and_wastage():
+    manifest, certificate = _fixture()
+    certificate["bins"][0]["items"][1]["y"] = 2.1
+    result = validate_certificate(manifest, certificate)
+    expected_total = 6 * 4.1
+    assert result["fabric_length_consumed_in"] == pytest.approx(4.1)
+    assert result["fabric_area_sq_in"] == pytest.approx(expected_total)
+    assert result["wastage_pct"] == pytest.approx((expected_total - 8) * 100 / expected_total)
+    assert result["utilization_pct"] + result["wastage_pct"] == pytest.approx(100)
