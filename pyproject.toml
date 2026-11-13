@@ -12,7 +12,7 @@ license = {text = "Proprietary - internal development"}
 dependencies = []
 
 [project.optional-dependencies]
-geometry = ["lxml>=5,<7", "shapely>=2,<3", "svgpathtools>=1.6,<2"]
+geometry = ["fonttools>=4.55,<5", "shapely>=2,<3"]
 dev = ["pytest>=8,<10", "ruff>=0.9,<1"]
 
 [project.scripts]
