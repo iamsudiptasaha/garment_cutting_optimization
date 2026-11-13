@@ -43,21 +43,17 @@ change, and less than 0.001% area change. Every repair includes
 `repair_details`. Larger spikes, bowties, separate polygons and major outline
 changes remain errors. Original SVG paths and labels are **never edited**.
 
-The `verify` command also performs an **original-curve guard**: each Bézier
-control hull is subdivided independently of polygon flattening until it fits
-inside a 0.25 mm envelope of the candidate polygon boundary. A shape that
-cannot be certified fails verification, even if the coarse/fine polygon
-comparison happens to agree. The JSON reports `source_curve_guard_passed`,
-`source_curve_guard_mm` and `minimum_solver_buffer_mm`.
+The MVP uses a finite-chord adaptive approximation for SVG curves. It
+retains explicit line-segment notches and automatically repairs small outline
+artifacts when they meet the existing repair limits. Larger invalid outlines
+are reported rather than silently placed.
 
-**Required future solver rule:** inflate each verified solver polygon outward
-by at least its `minimum_solver_buffer_mm` before placement checks. This field
-is an advisory requirement until a solver and independent final-layout
-validator are implemented; the current project does **not** enforce clearance
-between pieces. The curve guard proves only directed original-curve-to-polygon
-boundary containment. It does not prove symmetric shape equivalence, original
-topology, or that the original filled path is entirely inside the polygon's
-buffer. Never label a nested layout cutter-safe from this check alone.
+`verify` reports area and boundary differences at two approximation
+resolutions, but does not reject shapes for small differences by default.
+Original paths and labels remain unchanged. No nesting solver or final
+collision checker is implemented yet. When nesting is added, a small
+configurable clearance can absorb approximation error without requiring
+mathematically exact curve reconstruction.
 
 ## Milestones
 - Phase 0: packaging, fixture, smoke tests, CI.

@@ -42,7 +42,11 @@ def _distance_to_chord(point: Point, a: Point, b: Point) -> float:
     length = (dx * dx + dy * dy) ** 0.5
     if length == 0:
         return ((point[0] - a[0]) ** 2 + (point[1] - a[1]) ** 2) ** 0.5
-    return abs(dx * (a[1] - point[1]) - (a[0] - point[0]) * dy) / length
+    # Clamp to the finite chord, not its infinite supporting line.
+    # Otherwise a Bézier doubling back beyond an endpoint can be flattened away.
+    t = max(0.0, min(1.0, ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy) / (length * length)))
+    projection = (a[0] + t * dx, a[1] + t * dy)
+    return ((point[0] - projection[0]) ** 2 + (point[1] - projection[1]) ** 2) ** 0.5
 
 
 def _mid(a: Point, b: Point) -> Point:
