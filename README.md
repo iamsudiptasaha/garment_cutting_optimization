@@ -59,55 +59,43 @@ boundary containment. It does not prove symmetric shape equivalence, original
 topology, or that the original filled path is entirely inside the polygon's
 buffer. Never label a nested layout cutter-safe from this check alone.
 
-## Phase 3: first packing adapter (inches)
+## Phase 3: fixed-width nesting in inches
 
-The fabric width is always entered in **inches**. Source SVG dimensions are
-converted from millimetres automatically. The drawing must already have all
-cutting pieces aligned with the intended fabric grain direction (vertical/Y).
+Fabric width is entered in **inches**; source SVG millimetres are converted
+automatically. Patterns must already follow the fabric length/grain direction
+along SVG Y. The solver may rotate pieces only 0°/180° (or 0° with
+`--one-way`). Mirroring is prohibited.
 
-The following command builds an instance for PackingSolver's irregular
-**open-dimension-y** objective:
-
-```bash
-python -m pip install -e '.[dev,geometry]'
-garment-nesting prepare "samples/FC_HH_Full_Pyjama.svg" \
-  --fabric-width-in 60 --output-prefix trial
-```
-
-This produces \`trial.instance.json\` (PackingSolver-compatible) and
-\`trial.manifest.json\` (source IDs, inch dimensions and validation shapes).
-The height field inside the solver input is only a generous *search ceiling*,
-not a requested marker length or a fabric-length input.
-
-If you have separately installed the \`packingsolver_irregular\` command-line
-solver, optimize and validate in one step:
+Requires Python 3.12 or 3.13 to execute PackingSolver on an Apple Silicon Mac:
 
 ```bash
+python -m pip install -e '.[dev,geometry,solver]'
 garment-nesting nest "samples/FC_HH_Full_Pyjama.svg" \
   --fabric-width-in 60 --clearance-in 0.04 \
   --time-limit 30 --output-prefix trial
 ```
 
-The \`nest\` command writes a solution certificate and a validated JSON
-report containing \`fabric_length_consumed_in\`, \`utilization_pct\`, and
-piece placements. If no complete solution was found, it returns \`NOT_FOUND\`
-rather than pretending omitted pieces are a valid arrangement.
+**60 inches here is only a sample input.** Enter your actual fabric width.
+There is no fabric-length input; `open-dimension-y` minimizes the
+**total length of fabric consumed**.
 
-To validate an existing certificate without running the solver:
+Outputs are `trial.instance.json` (solver input), `trial.manifest.json`
+(piece-to-ID mapping), `trial.solution.json` (solver certificate) and
+`trial.report.json` (validated placements, length consumed in inches,
+utilization and counts). The height in the solver input is a generous internal
+search ceiling, not a requested fabric length. A complete solution is reported
+only after all required pieces pass an independent overlap/width check.
+
+If you only want to create solver input without optimization, this also works
+with Python 3.11 and the geometry dependencies:
 
 ```bash
-garment-nesting evaluate --manifest trial.manifest.json \
-  --certificate trial.solution.json --output trial.report.json
+garment-nesting prepare "samples/FC_HH_Full_Pyjama.svg" \
+  --fabric-width-in 60 --output-prefix trial
 ```
 
-Only 0° and 180° rotations are permitted; use \`--one-way\` to permit only
-0°. Mirroring is always forbidden. Current certificate checks cover piece
-counts, rotation, fabric width, clearance, and polygon overlap. The native
-editable SVG output is a *later step* and is not produced here.
-
-**Solver availability:** The external \`packingsolver_irregular\` executable is
-not bundled by this project. \`prepare\` and \`evaluate\` work without it; the
-\`nest\` command requires the executable on PATH (or \`--solver-binary\`).
+The optimized editable CorelDRAW-compatible SVG is not yet generated; it is
+the next integration step.
 
 ## Milestones
 - Phase 0: packaging, fixture, smoke tests, CI.
