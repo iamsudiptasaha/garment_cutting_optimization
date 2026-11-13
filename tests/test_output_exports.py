@@ -7,6 +7,7 @@ from struct import unpack
 from xml.etree import ElementTree as ET
 
 import pytest
+from PIL import Image
 
 from garment_nesting.cli import main
 from garment_nesting.input.svg import SVG_NS, inspect_svg
@@ -48,9 +49,16 @@ def test_export_preserves_editable_curves_and_labels(simple_layout, tmp_path):
     out = export_svg(original, manifest, report, tmp_path / "output" / "nested.svg")
     root = ET.parse(out).getroot()
     source = ET.parse(original).getroot()
-    assert root.get("width") == "6in"
-    assert root.get("height") == "2in"
-    assert root.get("viewBox") == "0 0 6 2"
+    assert root.get("width") == "7.8in"  # includes annotation margins
+    assert root.get("height") == "3.55in"
+    assert root.get("viewBox") == "0 0 7.8 3.55"
+    assert root.get("data-fabric-width-in") == "6"
+    assert root.get("data-fabric-length-in") == "2"
+    guide = root.find(f".//{SVG}rect[@id='fabric-boundary']")
+    assert guide is not None
+    assert guide.get("width") == "6"
+    assert guide.get("height") == "2"
+    assert root.find(f".//{SVG}g[@id='fabric-guide']") is not None
     assert root.get("data-grain-direction") == "y"
     before = {g.get("id"): g for g in source.iter(SVG + "g") if g.find(SVG + "path") is not None}
     after = {g.get("id"): g for g in root.iter(SVG + "g") if g.find(SVG + "path") is not None}
@@ -62,7 +70,7 @@ def test_export_preserves_editable_curves_and_labels(simple_layout, tmp_path):
         assert exported_label.text == original_label.text
         assert exported_label.get("x") == original_label.get("x")
     assert "rotate(180)" in after["b"].get("transform")
-    assert len(list(root.iter(SVG + "line"))) == 0  # Reference isn't a cutting path.
+    assert len(list(root.iter(SVG + "line"))) >= 4  # Dimension markers, not cutting paths.
     assert len(list(root.iter(SVG + "path"))) == 2
     assert manifest["source_sha256"]
 
@@ -74,11 +82,19 @@ def _png_dimensions(path: Path) -> tuple[int, int]:
 
 
 def test_png_is_one_continuous_shareable_image(simple_layout, tmp_path):
+    from garment_nesting.output.png import export_rasters
+
     original, manifest, report = simple_layout
     svg = export_svg(original, manifest, report, tmp_path / "nested.svg")
-    png = export_png(svg, tmp_path / "nested.png")
-    assert _png_dimensions(png) == (432, 144)
+    png, jpg = export_rasters(
+        svg, tmp_path / "nested.png", tmp_path / "nested.jpg",
+    )
+    assert _png_dimensions(png) == (3000, 1365)
+    with Image.open(jpg) as preview:
+        assert preview.format == "JPEG"
+        assert preview.size == (3000, 1365)
     assert png.stat().st_size > 500
+    assert jpg.stat().st_size > 500
 
 
 def test_long_roll_is_one_png_without_pagination(tmp_path):
@@ -101,7 +117,7 @@ def test_extremely_long_layout_does_not_get_unreadable_png(tmp_path):
         'width="36in" height="2000in" viewBox="0 0 36 2000"/>',
         encoding="utf-8",
     )
-    with pytest.raises(ValueError, match="unreadable PNG"):
+    with pytest.raises(ValueError, match="image size limit"):
         export_png(svg, tmp_path / "unreadable.png")
 
 
@@ -130,6 +146,7 @@ def test_render_cli_does_not_reoptimize(simple_layout, tmp_path):
     assert rc == 0
     assert (tmp_path / "output" / "trial.nested.svg").exists()
     assert (tmp_path / "output" / "trial.nested.png").exists()
+    assert (tmp_path / "output" / "trial.nested.jpg").exists()
 
 
 def test_reference_44_original_outlines_survive_export(tmp_path):
@@ -147,3 +164,36 @@ def test_reference_44_original_outlines_survive_export(tmp_path):
     assert len(output_inventory.patterns) == len(original_inventory.patterns) == 44
     original_paths = {p.group_id: p.path_d for p in original_inventory.patterns}
     assert all(p.path_d == original_paths[p.group_id] for p in output_inventory.patterns)
+
+
+def test_image_resolution_is_not_silently_reduced(tmp_path):
+    from garment_nesting.output.png import export_rasters
+
+    svg = tmp_path / "strip.svg"
+    svg.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="36in" '
+        'height="100in" viewBox="0 0 36 100"/>',
+        encoding="utf-8",
+    )
+    png, jpg = export_rasters(
+        svg, tmp_path / "strip.png", tmp_path / "strip.jpg",
+        preview_width_px=3200,
+    )
+    assert _png_dimensions(png) == (3200, 8889)
+    with Image.open(jpg) as image:
+        assert image.size == (3200, 8889)
+
+
+def test_oversize_preview_fails_before_creating_files(tmp_path):
+    from garment_nesting.output.png import export_rasters
+
+    svg = tmp_path / "strip.svg"
+    svg.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="36in" '
+        'height="1500in" viewBox="0 0 36 1500"/>',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="image size limit"):
+        export_rasters(svg, tmp_path / "strip.png", tmp_path / "strip.jpg")
+    assert not (tmp_path / "strip.png").exists()
+    assert not (tmp_path / "strip.jpg").exists()

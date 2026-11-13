@@ -39,7 +39,7 @@ def main(argv: list[str] | None = None) -> int:
     prepare.add_argument("--one-way", action="store_true")
     prepare.add_argument("--output-prefix", default="output/nesting")
 
-    nest = commands.add_parser("nest", help="Optimize and export SVG, PNG and JSON")
+    nest = commands.add_parser("nest", help="Optimize and export SVG, PNG, JPEG and JSON")
     nest.add_argument("svg")
     nest.add_argument("--fabric-width-in", type=float, required=True)
     nest.add_argument("--clearance-in", type=float, default=0.04)
@@ -51,10 +51,10 @@ def main(argv: list[str] | None = None) -> int:
     evaluate.add_argument("--manifest", required=True)
     evaluate.add_argument("--certificate", required=True)
     evaluate.add_argument("--output", default="output/nesting.report.json")
-    evaluate.add_argument("--svg", help="Also export SVG and PNG if result is feasible")
+    evaluate.add_argument("--svg", help="Also export SVG, PNG and JPEG if result is feasible")
     evaluate.add_argument("--output-prefix", default="output/nesting")
 
-    render = commands.add_parser("render", help="Create SVG and PNG from validated JSON")
+    render = commands.add_parser("render", help="Regenerate SVG, PNG and JPEG from validated JSON")
     render.add_argument("svg", help="Original SVG used for solving")
     render.add_argument("--manifest", required=True)
     render.add_argument("--report", required=True)
@@ -62,8 +62,12 @@ def main(argv: list[str] | None = None) -> int:
 
     for cmd in (nest, evaluate, render):
         cmd.add_argument(
-            "--preview-ppi", type=float, default=72.0,
-            help="Maximum preview resolution (pixels per inch); default 72",
+            "--preview-width-px", type=int, default=3000,
+            help="Continuous preview width in pixels; default 3000",
+        )
+        cmd.add_argument(
+            "--preview-ppi", type=float, default=None,
+            help="Optional legacy resolution override in pixels per inch",
         )
 
     args = parser.parse_args(argv)
@@ -93,11 +97,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "render":
             manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
             report = json.loads(Path(args.report).read_text(encoding="utf-8"))
-            svg, png = export_layouts(
+            svg, png, jpg = export_layouts(
                 args.svg, manifest, report, args.output_prefix,
-                preview_ppi=args.preview_ppi,
+                preview_width_px=args.preview_width_px, preview_ppi=args.preview_ppi,
             )
-            print(f"SVG: {svg}\nPNG: {png}")
+            print(f"SVG: {svg}\nPNG: {png}\nJPEG: {jpg}")
             return 0
 
         if args.command == "evaluate":
@@ -109,11 +113,11 @@ def main(argv: list[str] | None = None) -> int:
             if report["status"] != "FEASIBLE":
                 return 2
             if args.svg:
-                svg, png = export_layouts(
-                args.svg, manifest, report, args.output_prefix,
-                preview_ppi=args.preview_ppi,
-            )
-                print(f"SVG: {svg}\nPNG: {png}")
+                svg, png, jpg = export_layouts(
+                    args.svg, manifest, report, args.output_prefix,
+                    preview_width_px=args.preview_width_px, preview_ppi=args.preview_ppi,
+                )
+                print(f"SVG: {svg}\nPNG: {png}\nJPEG: {jpg}")
             return 0
 
         instance, manifest = prepare_instance(
@@ -137,7 +141,7 @@ def main(argv: list[str] | None = None) -> int:
         from garment_nesting.processor.run import solve_instance
 
         certificate_path = f"{prefix}.solution.json"
-        for suffix in (".nested.svg", ".nested.png"):
+        for suffix in (".nested.svg", ".nested.png", ".nested.jpg"):
             Path(f"{prefix}{suffix}").unlink(missing_ok=True)
         if args.time_limit <= 0:
             parser.error("--time-limit must be positive")
@@ -154,10 +158,11 @@ def main(argv: list[str] | None = None) -> int:
         _summary(report)
         if report["status"] != "FEASIBLE":
             return 2
-        svg, png = export_layouts(
-            args.svg, manifest, report, prefix, preview_ppi=args.preview_ppi,
+        svg, png, jpg = export_layouts(
+            args.svg, manifest, report, prefix,
+            preview_width_px=args.preview_width_px, preview_ppi=args.preview_ppi,
         )
-        print(f"SVG: {svg}\nPNG: {png}")
+        print(f"SVG: {svg}\nPNG: {png}\nJPEG: {jpg}")
         return 0
 
     parser.print_help()
