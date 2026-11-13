@@ -9,7 +9,7 @@ from shapely.geometry import Polygon
 
 from garment_nesting.geometry.audit import audit_svg, flatten_path
 from garment_nesting.geometry.repair import normalize_polygon
-from garment_nesting.importers.svg import SVG_NS, inspect_svg
+from garment_nesting.input.svg import SVG_NS, inspect_svg
 
 
 @dataclass(frozen=True)

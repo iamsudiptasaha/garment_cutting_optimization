@@ -9,7 +9,7 @@ from fontTools.svgLib.path import parse_path
 from shapely.geometry import Polygon
 
 from garment_nesting.geometry.repair import normalize_polygon
-from garment_nesting.importers.svg import inspect_svg
+from garment_nesting.input.svg import inspect_svg
 
 Point = tuple[float, float]
 
