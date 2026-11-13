@@ -40,3 +40,13 @@ def test_reference_svg_audit():
     assert all(p.group_id and p.label for p in audit.pieces)
     assert all(p.area_mm2 is not None and p.area_mm2 > 0 for p in audit.pieces)
     assert all(p.bounds_mm is not None for p in audit.pieces)
+
+
+def test_collinear_bezier_overshoot_is_not_erased():
+    points = flatten_path("M0 0 C-50 0 -50 0 10 0 L10 10 L0 10 Z", 0.25)
+    assert min(x for x, _ in points) < -10
+
+
+def test_small_v_notch_is_preserved():
+    points = flatten_path("M0 0 L10 0 L10 10 L5.2 10 L5 9.8 L4.8 10 L0 10 Z", 0.25)
+    assert (5.0, 9.8) in points
