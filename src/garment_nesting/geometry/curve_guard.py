@@ -6,6 +6,7 @@ polyline or a sparse set of Bézier samples. Unsupported geometry fails closed.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import pairwise
 from math import isfinite
 
 from fontTools.pens.recordingPen import RecordingPen
@@ -28,7 +29,7 @@ def _split_controls(control: tuple[Point, ...]) -> tuple[tuple[Point, ...], tupl
         previous = layers[-1]
         layers.append([
             ((a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5)
-            for a, b in zip(previous, previous[1:])
+            for a, b in pairwise(previous)
         ])
     return tuple(layer[0] for layer in layers), tuple(layer[-1] for layer in reversed(layers))
 
