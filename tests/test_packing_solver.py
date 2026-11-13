@@ -114,3 +114,39 @@ def test_prepare_cli_writes_packing_input(tmp_path):
     instance = json.loads((tmp_path / "trial.instance.json").read_text())
     manifest = json.loads((tmp_path / "trial.manifest.json").read_text())
     assert len(instance["item_types"]) == manifest["required_pieces"] == 44
+
+
+
+def test_native_packingsolver_smoke(tmp_path):
+    psi = pytest.importorskip("packingsolver.irregular")
+    # Exercise the real Python wheel / JSON API without running 44 large items.
+    rect = [{"x": 0, "y": 0}, {"x": 2, "y": 0},
+            {"x": 2, "y": 2}, {"x": 0, "y": 2}]
+    instance = {
+        "objective": "open-dimension-y",
+        "parameters": {"item_item_minimum_spacing": 0.04},
+        "bin_types": [{"type": "rectangle", "width": 6, "height": 6}],
+        "item_types": [
+            {"type": "polygon", "vertices": rect, "copies": 1,
+             "allowed_rotations": [{"start": 0, "end": 0, "mirror": False}]},
+        ],
+    }
+    instance_path = tmp_path / "instance.json"
+    solution_path = tmp_path / "solution.json"
+    instance_path.write_text(json.dumps(instance), encoding="utf-8")
+    builder = psi.InstanceBuilder()
+    builder.read(str(instance_path))
+    parameters = psi.OptimizeParameters()
+    parameters.time_limit = 2
+    output = psi.optimize(builder.build(), parameters)
+    output.solution.write(str(solution_path))
+    assert solution_path.exists()
+    solved = json.loads(solution_path.read_text())
+    manifest = {
+        "fabric_width_in": 6, "clearance_in": 0.04, "one_way": True,
+        "required_pieces": 1, "piece_area_sq_in": 4,
+        "pieces": [{"id": 0, "group_id": "square", "copies": 1, "vertices": rect}],
+    }
+    report = validate_certificate(manifest, solved)
+    assert report["status"] == "FEASIBLE"
+    assert report["required_pieces"] == 1
