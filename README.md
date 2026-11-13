@@ -24,7 +24,7 @@ python -m garment_nesting.cli --version
 ```
 
 Install the geometry dependencies with `python -m pip install -e '.[dev,geometry]'`.
-No nesting solver is installed or integrated yet.
+The optional native PackingSolver integration is described under Phase 3.
 
 ### Geometry reports
 
