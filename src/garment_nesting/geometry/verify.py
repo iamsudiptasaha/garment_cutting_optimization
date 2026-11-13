@@ -79,7 +79,7 @@ def verify_svg(
 
     inventory = inspect_svg(path)
     audit = audit_svg(path, tolerance_mm)
-    _, _, vw, vh = inventory.view_box
+    _, _, vw, _ = inventory.view_box
     scale = inventory.width_mm / vw
     transformed = _transform_issues(path)
     checks: list[Verification] = []
