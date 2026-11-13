@@ -53,7 +53,9 @@ def test_curve_overshoot_missed_by_old_flatness_check_is_rejected(tmp_path):
     ],
 )
 def test_multiple_silhouettes_are_guarded(tmp_path, d):
-    result = verify_svg(_svg(tmp_path, d))
+    # Small 10-mm synthetic pieces need finer flattening to satisfy the existing
+    # independent 0.1% area-convergence requirement.
+    result = verify_svg(_svg(tmp_path, d), tolerance_mm=0.01)
     assert result.passed, [check.errors for check in result.checks]
 
 
