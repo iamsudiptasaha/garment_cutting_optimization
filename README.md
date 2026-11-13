@@ -24,7 +24,7 @@ python -m garment_nesting.cli --version
 ```
 
 Install the geometry dependencies with `python -m pip install -e '.[dev,geometry]'`.
-No nesting solver is installed or integrated yet.
+The optional native PackingSolver integration is described under Phase 3.
 
 ### Geometry reports
 
@@ -54,6 +54,44 @@ Original paths and labels remain unchanged. No nesting solver or final
 collision checker is implemented yet. When nesting is added, a small
 configurable clearance can absorb approximation error without requiring
 mathematically exact curve reconstruction.
+
+## Phase 3: fixed-width nesting in inches
+
+Fabric width is entered in **inches**; source SVG millimetres are converted
+automatically. Patterns must already follow the fabric length/grain direction
+along SVG Y. The solver may rotate pieces only 0°/180° (or 0° with
+`--one-way`). Mirroring is prohibited.
+
+Requires Python 3.12 or 3.13 to execute PackingSolver on an Apple Silicon Mac:
+
+```bash
+python -m pip install -e '.[dev,geometry,solver]'
+garment-nesting nest "samples/FC_HH_Full_Pyjama.svg" \
+  --fabric-width-in 60 --clearance-in 0.04 \
+  --time-limit 30 --output-prefix trial
+```
+
+**60 inches here is only a sample input.** Enter your actual fabric width.
+There is no fabric-length input; `open-dimension-y` minimizes the
+**total length of fabric consumed**.
+
+Outputs are `trial.instance.json` (solver input), `trial.manifest.json`
+(piece-to-ID mapping), `trial.solution.json` (solver certificate) and
+`trial.report.json` (validated placements, length consumed in inches,
+utilization and counts). The height in the solver input is a generous internal
+search ceiling, not a requested fabric length. A complete solution is reported
+only after all required pieces pass an independent overlap/width check.
+
+If you only want to create solver input without optimization, this also works
+with Python 3.11 and the geometry dependencies:
+
+```bash
+garment-nesting prepare "samples/FC_HH_Full_Pyjama.svg" \
+  --fabric-width-in 60 --output-prefix trial
+```
+
+The optimized editable CorelDRAW-compatible SVG is not yet generated; it is
+the next integration step.
 
 ## Milestones
 - Phase 0: packaging, fixture, smoke tests, CI.
