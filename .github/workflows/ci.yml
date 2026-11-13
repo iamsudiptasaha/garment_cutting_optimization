@@ -18,3 +18,14 @@ jobs:
       - run: python -m pip install -e '.[dev,geometry]'
       - run: python -m ruff check src tests
       - run: python -m pytest -q
+      - name: Generate reference geometry report
+        if: always()
+        run: |
+          garment-nesting verify samples/FC_HH_Full_Pyjama.svg --output geometry-verification.json || true
+      - name: Upload reference geometry report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: geometry-verification-${{ matrix.python-version }}
+          path: geometry-verification.json
+          if-no-files-found: error
