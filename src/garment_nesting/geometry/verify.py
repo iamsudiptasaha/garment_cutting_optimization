@@ -8,6 +8,7 @@ from xml.etree import ElementTree as ET
 from shapely.geometry import Polygon
 
 from garment_nesting.geometry.audit import audit_svg, flatten_path
+from garment_nesting.geometry.repair import normalize_polygon
 from garment_nesting.importers.svg import SVG_NS, inspect_svg
 
 
@@ -18,6 +19,8 @@ class Verification:
     area_delta_pct: float | None
     boundary_deviation_mm: float | None
     errors: tuple[str, ...]
+    repaired: bool
+    repair_details: str | None
 
 
 @dataclass(frozen=True)
@@ -91,17 +94,22 @@ def verify_svg(
             errors.append("Cutting outline or ancestor has an unsupported transform")
         if not errors:
             try:
-                coarse = Polygon(flatten_path(pattern.path_d, tolerance_mm / scale))
-                fine = Polygon(flatten_path(pattern.path_d, tolerance_mm / (4 * scale)))
-                if not fine.is_valid or fine.is_empty or fine.area <= 0:
-                    errors.append("Fine approximation has invalid topology")
-                else:
-                    delta = abs(coarse.area - fine.area) / fine.area * 100
-                    deviation = coarse.boundary.hausdorff_distance(fine.boundary) * scale
-                    if delta > max_area_delta_pct:
-                        errors.append("Area changes beyond permitted tolerance")
-                    if deviation > max_boundary_deviation_mm:
-                        errors.append("Boundary deviation exceeds permitted tolerance")
+                coarse = normalize_polygon(
+                    Polygon(flatten_path(pattern.path_d, tolerance_mm / scale)),
+                    max_deviation=tolerance_mm / scale,
+                    max_remnant_length=tolerance_mm / scale,
+                ).polygon
+                fine = normalize_polygon(
+                    Polygon(flatten_path(pattern.path_d, tolerance_mm / (4 * scale))),
+                    max_deviation=tolerance_mm / scale,
+                    max_remnant_length=tolerance_mm / scale,
+                ).polygon
+                delta = abs(coarse.area - fine.area) / fine.area * 100
+                deviation = coarse.boundary.hausdorff_distance(fine.boundary) * scale
+                if delta > max_area_delta_pct:
+                    errors.append("Area changes beyond permitted tolerance")
+                if deviation > max_boundary_deviation_mm:
+                    errors.append("Boundary deviation exceeds permitted tolerance")
             except (ValueError, TypeError, IndexError) as exc:
                 errors.append(str(exc))
         checks.append(Verification(
@@ -110,5 +118,7 @@ def verify_svg(
             area_delta_pct=None if delta is None else round(delta, 6),
             boundary_deviation_mm=None if deviation is None else round(deviation, 6),
             errors=tuple(errors),
+            repaired=item.repaired,
+            repair_details=item.repair_details,
         ))
     return VerificationReport(inventory.source, tolerance_mm, tuple(checks))

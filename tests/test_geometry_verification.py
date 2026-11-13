@@ -31,7 +31,7 @@ def test_square_passes(tmp_path):
 def test_self_intersection_fails(tmp_path):
     report = verify_svg(_write_svg(tmp_path, "M0 0 L10 10 L0 10 L10 0 Z"))
     assert not report.passed
-    assert any("Invalid polygon" in error for error in report.checks[0].errors)
+    assert any("zero-area" in error.lower() for error in report.checks[0].errors)
 
 
 @pytest.mark.parametrize("where", ["group", "ancestor"])
@@ -59,7 +59,7 @@ def test_reference_inventory_has_44_verification_records():
     report = verify_svg(SAMPLE)
     assert len(report.checks) == 44
     assert len({p.group_id for p in report.checks}) == 44
-    # Do not assert all pieces pass until the actual geometry metrics are reviewed.
+    # Reference geometry verification is enforced by test_micro_geometry_repair.py.
 
 
 def test_invalid_tolerance(tmp_path):

@@ -8,6 +8,7 @@ from fontTools.pens.recordingPen import RecordingPen
 from fontTools.svgLib.path import parse_path
 from shapely.geometry import Polygon
 
+from garment_nesting.geometry.repair import normalize_polygon
 from garment_nesting.importers.svg import inspect_svg
 
 Point = tuple[float, float]
@@ -22,6 +23,8 @@ class PieceAudit:
     bounds_mm: tuple[float, float, float, float] | None
     vertices: int
     errors: tuple[str, ...]
+    repaired: bool
+    repair_details: str | None
 
 
 @dataclass(frozen=True)
@@ -125,6 +128,8 @@ def audit_svg(path: str | Path, tolerance_mm: float = 0.25) -> GeometryAudit:
         area = None
         bounds = None
         vertices = 0
+        repaired = False
+        repair_details = None
         if pattern.path_count != 1:
             errors.append("Expected exactly one cutting outline")
         if pattern.source_transform:
@@ -135,11 +140,14 @@ def audit_svg(path: str | Path, tolerance_mm: float = 0.25) -> GeometryAudit:
             points = flatten_path(pattern.path_d, tolerance_mm / scale)
             vertices = len(points) - 1
             physical = [((x - vx) * scale, (y - vy) * scale) for x, y in points]
-            polygon = Polygon(physical)
-            if not polygon.is_valid:
-                errors.append("Invalid polygon (self-intersection or degenerate geometry)")
-            if polygon.is_empty or polygon.area <= 0:
-                errors.append("Zero-area polygon")
+            normalized = normalize_polygon(
+                Polygon(physical),
+                max_deviation=tolerance_mm,
+                max_remnant_length=tolerance_mm,
+            )
+            polygon = normalized.polygon
+            repaired = normalized.repaired
+            repair_details = normalized.details
             area = round(polygon.area, 3)
             bounds = tuple(round(v, 3) for v in polygon.bounds)
         except (ValueError, TypeError, IndexError) as exc:
@@ -153,5 +161,7 @@ def audit_svg(path: str | Path, tolerance_mm: float = 0.25) -> GeometryAudit:
             bounds_mm=bounds,
             vertices=vertices,
             errors=tuple(errors),
+            repaired=repaired,
+            repair_details=repair_details,
         ))
     return GeometryAudit(inventory.source, tolerance_mm, tuple(records))
