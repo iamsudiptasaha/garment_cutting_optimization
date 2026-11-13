@@ -5,9 +5,11 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
+from shapely.affinity import affine_transform
 from shapely.geometry import Polygon
 
 from garment_nesting.geometry.audit import audit_svg, flatten_path
+from garment_nesting.geometry.curve_guard import verify_curve_envelope
 from garment_nesting.geometry.repair import normalize_polygon
 from garment_nesting.importers.svg import SVG_NS, inspect_svg
 
@@ -21,6 +23,9 @@ class Verification:
     errors: tuple[str, ...]
     repaired: bool
     repair_details: str | None
+    source_curve_guard_passed: bool
+    source_curve_guard_mm: float | None
+    minimum_solver_buffer_mm: float | None
 
 
 @dataclass(frozen=True)
@@ -70,8 +75,9 @@ def verify_svg(
 ) -> VerificationReport:
     """Check coarse/fine approximations and reject unhandled transforms.
 
-    The finer approximation is a numerical reference, not an exact Bézier
-    distance proof. This verification does not certify cutter-ready geometry.
+    Also certify that the *original* Bézier curves stay within a conservative
+    buffer around the repaired polygon using control-hull subdivision.
+    This is a directed boundary check, not a cutter-ready collision proof.
     """
     if tolerance_mm <= 0 or max_area_delta_pct < 0:
         raise ValueError("Tolerance must be positive and area limit nonnegative")
@@ -82,7 +88,7 @@ def verify_svg(
 
     inventory = inspect_svg(path)
     audit = audit_svg(path, tolerance_mm)
-    _, _, vw, _ = inventory.view_box
+    vx, vy, vw, _ = inventory.view_box
     scale = inventory.width_mm / vw
     transformed = _transform_issues(path)
     checks: list[Verification] = []
@@ -90,6 +96,9 @@ def verify_svg(
         errors = list(item.errors)
         delta = None
         deviation = None
+        source_guard_passed = False
+        source_guard_mm = None
+        minimum_solver_buffer_mm = None
         if pattern.group_id in transformed:
             errors.append("Cutting outline or ancestor has an unsupported transform")
         if not errors:
@@ -110,6 +119,22 @@ def verify_svg(
                     errors.append("Area changes beyond permitted tolerance")
                 if deviation > max_boundary_deviation_mm:
                     errors.append("Boundary deviation exceeds permitted tolerance")
+                if not errors:
+                    original_mm_polygon = affine_transform(
+                        coarse,
+                        [scale, 0, 0, scale, -vx * scale, -vy * scale],
+                    )
+                    guard = verify_curve_envelope(
+                        pattern.path_d,
+                        original_mm_polygon,
+                        scale_mm_per_unit=scale,
+                        viewbox_origin=(vx, vy),
+                        tolerance_mm=tolerance_mm,
+                    )
+                    source_guard_passed = True
+                    source_guard_mm = guard.tolerance_mm
+                    # Advisory for the future solver; no placement engine exists yet.
+                    minimum_solver_buffer_mm = guard.tolerance_mm
             except (ValueError, TypeError, IndexError) as exc:
                 errors.append(str(exc))
         checks.append(Verification(
@@ -120,5 +145,8 @@ def verify_svg(
             errors=tuple(errors),
             repaired=item.repaired,
             repair_details=item.repair_details,
+            source_curve_guard_passed=source_guard_passed,
+            source_curve_guard_mm=source_guard_mm,
+            minimum_solver_buffer_mm=minimum_solver_buffer_mm,
         ))
     return VerificationReport(inventory.source, tolerance_mm, tuple(checks))
