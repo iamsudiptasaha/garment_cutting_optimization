@@ -1,1 +1,0 @@
-# garment_cutting_optimization
