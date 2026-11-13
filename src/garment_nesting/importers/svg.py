@@ -1,5 +1,6 @@
 """Phase 1 SVG inventory; no curve approximation or geometric validation."""
 from __future__ import annotations
+
 import re
 from dataclasses import asdict, dataclass
 from pathlib import Path

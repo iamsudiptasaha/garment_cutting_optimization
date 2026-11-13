@@ -3,6 +3,7 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 import pytest
+
 from garment_nesting.importers.svg import inspect_svg
 
 ROOT = Path(__file__).resolve().parents[1]
