@@ -62,8 +62,8 @@ input/                            Source SVG files (not modified)
 src/garment_nesting/input/        SVG parsing and inventory
 src/garment_nesting/processor/    PackingSolver adapter, optimization, validation
 src/garment_nesting/geometry/     Processor's polygon utilities
-src/garment_nesting/output/       Exact-path SVG export and vector PDF
-output/                           Generated SVG, PDF and JSON (ignored by Git)
+src/garment_nesting/output/       Exact-path SVG export and continuous PNG preview
+output/                           Generated SVG, PNG and JSON (ignored by Git)
 ```
 
 Input and export modules are intended to remain stable while we tune the
@@ -93,7 +93,7 @@ Outputs are `trial.instance.json` (solver input), `trial.manifest.json`
 (piece-to-ID mapping), `trial.solution.json` (solver certificate),
 `trial.report.json` (validated lengths, wastage and placements),
 `trial.nested.svg` (editable vector layout) and `trial.nested.pdf`
-(true-size vector PDF). The height in the solver input is a generous internal
+(true-size continuous PNG preview). The height in the solver input is a generous internal
 search ceiling, not a requested fabric length. Fabric length consumed is
 `max(piece_end_y) - min(piece_start_y)`, in inches, independent of any blank
 space before the layout. Wastage is `(fabric_width_in * length_consumed_in -
@@ -111,7 +111,7 @@ garment-nesting prepare "samples/FC_HH_Full_Pyjama.svg" \
 ```
 
 The `nest` command now exports `output/nesting.nested.svg` and
-`output/nesting.nested.pdf` in addition to its JSON files. It **does not**
+`output/nesting.nested.png` in addition to its JSON files. It **does not**
 redraw original shapes as polygons: the source Bézier paths and grouped
 text are retained, with placement transforms applied to each group.
 
@@ -131,11 +131,13 @@ garment-nesting render "input/your-pattern.svg" \
   --report output/nesting.report.json
 ```
 
-PDF dimensions preserve **one physical inch per inch**. Long layouts are
-split into consecutive pages, each no longer than 72 inches, with no
-automatic reduction in scale; the SVG stays one continuous piece.
-Fabric width, fabric length consumed, area, utilization and wastage all
-remain expressed in inches/square inches/percent as appropriate.
+The PNG is one continuous scrollable image (no pages or cuts), intended for
+sharing with floor operators. It defaults to 72 preview pixels per inch
+(`--preview-ppi` is configurable), and is automatically scaled down only
+when needed to respect image-size limits. If a very long image would become
+unreadable, export fails rather than silently reducing its resolution further.
+The editable SVG remains the full-length, physically accurate cutting master.
+All fabric measurements in reports remain in inches or square inches.
 
 
 ## Milestones

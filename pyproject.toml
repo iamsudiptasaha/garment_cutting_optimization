@@ -14,7 +14,7 @@ dependencies = []
 [project.optional-dependencies]
 geometry = ["fonttools>=4.55,<5", "shapely>=2,<3"]
 solver = ["packingsolver>=0.1.1301,<0.2"]
-output = ["cairosvg>=2.7,<3", "pypdf>=5,<7"]
+output = ["cairosvg>=2.7,<3"]
 dev = ["pytest>=8,<10", "ruff>=0.9,<1"]
 
 [project.scripts]

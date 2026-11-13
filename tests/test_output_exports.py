@@ -1,4 +1,4 @@
-"""Stable input/processor/output boundaries and true-size SVG/PDF export."""
+"""Stable input/processor/output boundaries and one-piece SVG/PNG export."""
 from __future__ import annotations
 
 import json
@@ -6,11 +6,11 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 import pytest
-from pypdf import PdfReader
+from struct import unpack
 
 from garment_nesting.cli import main
 from garment_nesting.input.svg import SVG_NS, inspect_svg
-from garment_nesting.output.pdf import export_pdf
+from garment_nesting.output.png import export_png
 from garment_nesting.output.svg import export_svg
 from garment_nesting.processor.packing import prepare_instance, validate_certificate
 
@@ -55,32 +55,33 @@ def test_export_preserves_editable_curves_and_labels(simple_layout, tmp_path):
     before = {g.get("id"): g for g in source.iter(SVG + "g") if g.find(SVG + "path") is not None}
     after = {g.get("id"): g for g in root.iter(SVG + "g") if g.find(SVG + "path") is not None}
     assert set(after) == set(before) == {"a", "b"}
-    for key in before:
-        assert after[key].find(SVG + "path").get("d") == before[key].find(SVG + "path").get("d")
-        assert list(after[key].iter(SVG + "text"))[0].text == (
-            list(before[key].iter(SVG + "text"))[0].text
-        )
-        assert list(after[key].iter(SVG + "text"))[0].get("x") == (
-            list(before[key].iter(SVG + "text"))[0].get("x")
-        )
+    for key, source_group in before.items():
+        assert after[key].find(SVG + "path").get("d") == source_group.find(SVG + "path").get("d")
+        original_label = next(source_group.iter(SVG + "text"))
+        exported_label = next(after[key].iter(SVG + "text"))
+        assert exported_label.text == original_label.text
+        assert exported_label.get("x") == original_label.get("x")
     assert "rotate(180)" in after["b"].get("transform")
     assert len(list(root.iter(SVG + "line"))) == 0  # Reference isn't a cutting path.
     assert len(list(root.iter(SVG + "path"))) == 2
     assert manifest["source_sha256"]
 
 
-def test_pdf_is_vector_and_at_exact_inch_scale(simple_layout, tmp_path):
+def _png_dimensions(path: Path) -> tuple[int, int]:
+    data = path.read_bytes()
+    assert data[:8] == b"\x89PNG\r\n\x1a\n"
+    return unpack(">II", data[16:24])
+
+
+def test_png_is_one_continuous_shareable_image(simple_layout, tmp_path):
     original, manifest, report = simple_layout
     svg = export_svg(original, manifest, report, tmp_path / "nested.svg")
-    pdf = export_pdf(svg, tmp_path / "nested.pdf")
-    document = PdfReader(str(pdf))
-    assert len(document.pages) == 1
-    assert float(document.pages[0].mediabox.width) == pytest.approx(6 * 72)
-    assert float(document.pages[0].mediabox.height) == pytest.approx(2 * 72)
-    assert len(pdf.read_bytes()) > 500
+    png = export_png(svg, tmp_path / "nested.png")
+    assert _png_dimensions(png) == (432, 144)
+    assert png.stat().st_size > 500
 
 
-def test_pdf_long_roll_splits_pages_without_resizing(tmp_path):
+def test_long_roll_is_one_png_without_pagination(tmp_path):
     svg = tmp_path / "long.svg"
     svg.write_text(
         '<svg xmlns="http://www.w3.org/2000/svg" '
@@ -89,11 +90,19 @@ def test_pdf_long_roll_splits_pages_without_resizing(tmp_path):
         '</svg>',
         encoding="utf-8",
     )
-    pdf = export_pdf(svg, tmp_path / "long.pdf")
-    pages = PdfReader(str(pdf)).pages
-    assert len(pages) == 2
-    assert [float(p.mediabox.width) for p in pages] == pytest.approx([432, 432])
-    assert [float(p.mediabox.height) for p in pages] == pytest.approx([5184, 576])
+    png = export_png(svg, tmp_path / "long.png")
+    assert _png_dimensions(png) == (432, 5760)
+
+
+def test_extremely_long_layout_does_not_get_unreadable_png(tmp_path):
+    svg = tmp_path / "very_long.svg"
+    svg.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg" '
+        'width="36in" height="2000in" viewBox="0 0 36 2000"/>',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="unreadable PNG"):
+        export_png(svg, tmp_path / "unreadable.png")
 
 
 def test_export_rejects_modified_input(simple_layout, tmp_path):
@@ -120,7 +129,7 @@ def test_render_cli_does_not_reoptimize(simple_layout, tmp_path):
                "--report", str(repath), "--output-prefix", str(prefix)])
     assert rc == 0
     assert (tmp_path / "output" / "trial.nested.svg").exists()
-    assert (tmp_path / "output" / "trial.nested.pdf").exists()
+    assert (tmp_path / "output" / "trial.nested.png").exists()
 
 
 def test_reference_44_original_outlines_survive_export(tmp_path):
