@@ -130,6 +130,7 @@ def main() -> None:
             page.get_by_text("43 of 44 patterns included", exact=False).wait_for(
                 timeout=15000,
             )
+            rendered_count = table_rows.count()
             page.screenshot(
                 path=str(ARTIFACTS / "pattern-editor-after-upload.png"),
                 full_page=True,
@@ -138,7 +139,7 @@ def main() -> None:
                 json.dumps({
                     "server_revision": UI_REVISION,
                     "fabric_field_label_font_px": font_px,
-                    "rendered_rows_first_page": table_rows.count(),
+                    "rendered_rows_first_page": rendered_count,
                     "first_row": first_row[:150],
                     "quantity_zero_updated_summary": True,
                     "browser_page_errors": errors,
@@ -146,12 +147,12 @@ def main() -> None:
                 encoding="utf-8",
             )
             assert not errors, f"JavaScript runtime errors: {errors}"
-            browser.close()
             print(
-                f"PASS browser: {table_rows.count()} rendered rows, "
+                f"PASS browser: {rendered_count} rendered rows, "
                 f"{font_px}px fabric label, quantity 0 updated",
                 flush=True,
             )
+            browser.close()
     finally:
         if server.poll() is None:
             if os.name == "posix":
