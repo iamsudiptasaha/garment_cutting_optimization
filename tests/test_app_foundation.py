@@ -429,3 +429,81 @@ def test_singleton_lock_is_reclaimable_after_owner_exits(tmp_path):
     with _dev_instance_lock(tmp_path) as (owner, existing):
         assert owner is not None
         assert existing is None  # stale JSON is irrelevant without held OS lock
+
+
+
+def test_ui_revision_identifies_loaded_source_bytes():
+    from hashlib import sha256
+
+    from garment_nesting import webapp
+
+    assert webapp.UI_REVISION == sha256(Path(webapp.__file__).read_bytes()).hexdigest()[:12]
+
+
+@pytest.mark.skipif(os.name != "posix", reason="macOS/Linux SIGTERM launcher restart")
+def test_dev_restart_replaces_old_watcher_without_adding_ports(tmp_path):
+    """Restart must terminate a verified owner and bind the same requested port."""
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    env = os.environ.copy()
+    for key in tuple(env):
+        if key.startswith("NICEGUI_SCREEN_TEST") or key == "PYTEST_CURRENT_TEST":
+            env.pop(key)
+    cmd = [
+        sys.executable, "-m", "garment_nesting.app", "dev",
+        "--port", str(port), "--no-browser",
+    ]
+    with (tmp_path / "before.log").open("w", encoding="utf-8") as log:
+        first = subprocess.Popen(
+            cmd, env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True,
+        )
+    restart = None
+    try:
+        deadline = time.monotonic() + 25
+        while time.monotonic() < deadline:
+            if first.poll() is not None:
+                pytest.fail((tmp_path / "before.log").read_text())
+            try:
+                with urlopen(f"http://127.0.0.1:{port}/health", timeout=0.3) as response:
+                    if response.status == 200:
+                        break
+            except OSError:
+                time.sleep(0.2)
+        else:
+            pytest.fail("Initial dev server did not become healthy")
+        with (tmp_path / "after.log").open("w", encoding="utf-8") as log:
+            restart = subprocess.Popen(
+                [*cmd, "--restart"], env=env, stdout=log,
+                stderr=subprocess.STDOUT, start_new_session=True,
+            )
+        first.wait(timeout=18)
+        assert first.returncode == 0, (tmp_path / "before.log").read_text()
+        deadline = time.monotonic() + 25
+        while time.monotonic() < deadline:
+            if restart.poll() is not None:
+                pytest.fail((tmp_path / "after.log").read_text())
+            log_output = (tmp_path / "after.log").read_text()
+            if "Stopped old development launcher" in log_output:
+                try:
+                    with urlopen(f"http://127.0.0.1:{port}/health", timeout=0.3) as response:
+                        if response.status == 200:
+                            break
+                except OSError:
+                    pass
+            time.sleep(0.2)
+        else:
+            pytest.fail("Restarted launcher did not become healthy")
+        assert f":{port}" in (tmp_path / "after.log").read_text()
+    finally:
+        for process in (restart, first):
+            if process is not None:
+                try:
+                    os.killpg(process.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+                try:
+                    process.wait(timeout=8)
+                except subprocess.TimeoutExpired:
+                    os.killpg(process.pid, signal.SIGKILL)
+                    process.wait(timeout=5)

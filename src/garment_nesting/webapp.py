@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from uuid import uuid4
@@ -16,6 +17,17 @@ from garment_nesting.job_selection import (
     namespace_uploaded_rows,
     selection_summary,
 )
+
+
+def _source_revision() -> str:
+    """Fingerprint loaded source code so old servers cannot masquerade as updated UI."""
+    try:
+        return sha256(Path(__file__).read_bytes()).hexdigest()[:12]
+    except OSError:
+        return "bundled"
+
+
+UI_REVISION = _source_revision()
 
 
 def inspect_upload(name: str, data: bytes) -> list[dict]:
@@ -85,7 +97,7 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
 
     @app.get("/health")
     def health() -> dict[str, str]:
-        return {"application": "garment-nesting", "status": "ok"}
+        return {"application": "garment-nesting", "status": "ok", "ui_revision": UI_REVISION}
 
     @ui.page("/")
     def home() -> None:
@@ -94,7 +106,7 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
         ui.colors(primary="#17657b")
         ui.add_head_html("""
             <style>
-              .nesting-input .q-field__label { font-size: 1rem; }
+              .nesting-input .q-field__native { font-size: 1.125rem; }
               .nesting-inventory .q-table thead th {
                 font-size: 1rem; font-weight: 700;
               }
@@ -104,9 +116,13 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
         """)
         with ui.column().classes("w-full max-w-7xl mx-auto p-5 gap-5"):
             ui.label("Garment Nesting Optimizer").classes("text-4xl font-bold")
-            ui.label("Local workspace · Input / Processor / Output").classes(
-                "text-base text-gray-600"
-            )
+            with ui.row().classes("items-center justify-between w-full gap-2"):
+                ui.label("Local workspace · Input / Processor / Output").classes(
+                    "text-base text-gray-600"
+                )
+                ui.label(f"UI version: {UI_REVISION}").classes(
+                    "text-sm font-medium text-gray-600"
+                )
             with ui.row().classes("w-full gap-3"):
                 for title, description in (
                     ("1 · Input", "Import and validate SVG patterns"),
@@ -163,15 +179,21 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
                     ("max_length_in", "Max length (in; blank = open)", 0.1),
                     ("time_limit_seconds", "Solver time budget (s)", 1),
                 ]
-                with ui.grid(columns=4).classes("w-full gap-3"):
+                with ui.grid(columns=4).classes("w-full gap-4"):
                     for field, title, step in settings_fields:
-                        ui.number(
-                            title,
-                            value=fabric_settings[field],
-                            min=0,
-                            step=step,
-                            on_change=lambda e, field=field: change_fabric(e, field),
-                        ).props("outlined").classes("w-full nesting-input")
+                        with ui.column().classes("w-full gap-1"):
+                            ui.label(title).classes(
+                                "text-lg font-semibold leading-normal"
+                            )
+                            ui.number(
+                                value=fabric_settings[field],
+                                min=0,
+                                step=step,
+                                on_change=lambda e, field=field: change_fabric(e, field),
+                            ).props(
+                                f'outlined input-style="font-size: 18px" '
+                                f'aria-label="{title}"'
+                            ).classes("w-full nesting-input")
                 update_dimensions()
             with ui.card().classes("w-full gap-4"):
                 ui.label("Pattern inventory").classes("text-2xl font-bold")
@@ -248,7 +270,7 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
                     row_key="id",
                     pagination={"rowsPerPage": 25},
                 ).classes("w-full nesting-inventory").props(
-                    'rows-per-page-options="[10,25,50,0]"'
+                    ':rows-per-page-options="[10,25,50,0]"'
                 )
                 # Do not hide the table. Quasar may not reveal a hidden table
                 # on the first upload; an empty table still shows its columns.

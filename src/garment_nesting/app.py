@@ -151,6 +151,62 @@ def _write_dev_state(state, port: int) -> None:
     state.flush()
 
 
+def _dev_server_revision(port: int) -> str | None:
+    """Read the revision of the process actually serving this localhost URL."""
+    try:
+        with urlopen(f"http://127.0.0.1:{port}/health", timeout=0.75) as response:
+            data = json.load(response)
+            if data.get("application") == "garment-nesting":
+                return data.get("ui_revision", "old build (no revision)")
+    except (OSError, ValueError, TypeError):
+        pass
+    return None
+
+
+def _restart_existing_development_launcher(root: Path) -> bool:
+    """Stop only the verified launcher holding this checkout's lock.
+
+    No signal is sent to arbitrary TCP listeners, other Python programs,
+    or unmatched PIDs from a stale lock file.
+    """
+    if os.name != "posix":
+        print("--restart is currently supported for macOS/Linux development only.", file=sys.stderr)
+        return False
+    with _dev_instance_lock(root) as (owner, existing):
+        if owner is not None:
+            return True
+        pid = existing.get("launcher_pid")
+        if not isinstance(pid, int) or pid <= 1 or pid == os.getpid():
+            print("Cannot verify existing launcher PID. Refusing to terminate it.", file=sys.stderr)
+            return False
+        lookup = subprocess.run(
+            ["ps", "-ww", "-p", str(pid), "-o", "command="],
+            capture_output=True, text=True, check=False,
+        )
+        if lookup.returncode != 0 or not all(
+            token in lookup.stdout for token in ("-m garment_nesting.app", "dev")
+        ):
+            print(
+                f"PID {pid} is not a verified garment_nesting.app dev process; "
+                "refusing to stop it.",
+                file=sys.stderr,
+            )
+            return False
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    deadline = time.monotonic() + 12
+    while time.monotonic() < deadline:
+        with _dev_instance_lock(root) as (owner, _):
+            if owner is not None:
+                print(f"Stopped old development launcher PID {pid}.", flush=True)
+                return True
+        time.sleep(0.2)
+    print("Old launcher did not exit. Stop it manually; no new server was opened.", file=sys.stderr)
+    return False
+
+
 def _reuse_existing_dev(state: dict, *, show: bool) -> int:
     """A second invocation reuses the current browser URL; never spawns a child."""
     port = state.get("port")
@@ -159,6 +215,16 @@ def _reuse_existing_dev(state: dict, *, show: bool) -> int:
         return 0
     url = f"http://127.0.0.1:{port}"
     print(f"Development server already running or starting at {url}; reusing it.")
+    from garment_nesting.webapp import UI_REVISION
+
+    serving_revision = _dev_server_revision(port)
+    if serving_revision and serving_revision != UI_REVISION:
+        print(
+            f"STALE GUI: running revision {serving_revision}; "
+            f"current source revision {UI_REVISION}. "
+            "Run: python -m garment_nesting.app dev --restart",
+            file=sys.stderr,
+        )
     if show:
         try:
             with urlopen(f"{url}/health", timeout=0.5) as response:
@@ -211,9 +277,13 @@ def _exit_on_signal(_signum, _frame) -> None:
 
 
 
-def run_development_server(port: int | None = None, *, show: bool = True) -> int:
+def run_development_server(
+    port: int | None = None, *, show: bool = True, restart: bool = False,
+) -> int:
     """Enforce one dev server per checkout, with reuse and orphan protection."""
     root = Path(__file__).resolve().parent
+    if restart and not _restart_existing_development_launcher(root):
+        return 2
     with _dev_instance_lock(root) as (owner, existing):
         if owner is None:
             return _reuse_existing_dev(existing, show=show)
@@ -223,6 +293,10 @@ def run_development_server(port: int | None = None, *, show: bool = True) -> int
             print(str(exc), file=sys.stderr)
             return 2
         _write_dev_state(owner, selected_port)
+        from garment_nesting.webapp import UI_REVISION
+
+        print(f"Loaded UI revision: {UI_REVISION}", flush=True)
+        print(f"Source package: {root}", flush=True)
         if used_fallback:
             print(
                 f"Port 8080 occupied; using port {selected_port} "
@@ -297,6 +371,10 @@ def main(argv: list[str] | None = None) -> int:
         help="Use this exact port (default: 8080, or an automatic free port if occupied)",
     )
     dev.add_argument("--no-browser", action="store_true", help="Do not launch a browser tab")
+    dev.add_argument(
+        "--restart", action="store_true",
+        help="Stop the verified existing dev launcher for this checkout and start fresh",
+    )
     serve = commands.add_parser("serve", help="Run the web GUI (used by desktop host)")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8080)
@@ -318,7 +396,9 @@ def main(argv: list[str] | None = None) -> int:
             print("NestingOptimizer bundled dependencies OK")
         return 0
     if args.command == "dev":
-        return run_development_server(args.port, show=not args.no_browser)
+        return run_development_server(
+            args.port, show=not args.no_browser, restart=args.restart,
+        )
     if args.command == "serve":
         if args.parent_watch_fd is not None:
             Thread(target=_watch_parent_pipe, args=(args.parent_watch_fd,), daemon=True).start()
