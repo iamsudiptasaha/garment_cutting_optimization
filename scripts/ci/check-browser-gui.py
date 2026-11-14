@@ -90,6 +90,10 @@ def main() -> None:
             page.get_by_text("44 of 44 patterns included", exact=False).wait_for(
                 timeout=45000,
             )
+            page.wait_for_function(
+                "() => window.scrollY > 50",
+                timeout=10000,
+            )
             page.screenshot(
                 path=str(ARTIFACTS / "browser-immediately-after-upload.png"),
                 full_page=True,
