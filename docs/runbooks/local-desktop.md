@@ -9,7 +9,7 @@ python -m pip install -e ".[dev,geometry,solver,output,app]"
 python -m garment_nesting.app dev
 ~~~
 
-Open http://127.0.0.1:8080 in your browser. The NiceGUI development server
+The module also re-enters via the __mp_main__ process during NiceGUI hot reload.\nThe development launcher accepts --no-browser for headless testing.\n\nOpen http://127.0.0.1:8080 in your browser. The NiceGUI development server
 restarts on Python code changes. Stop with Ctrl-C. After merging updates:
 
 ~~~bash
