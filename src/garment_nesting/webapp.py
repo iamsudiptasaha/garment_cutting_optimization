@@ -66,9 +66,17 @@ async def inspect_uploaded_file(file) -> list[dict]:
 
 
 def replace_inventory_table_rows(table, rows: list[dict]) -> None:
-    """Push a fresh snapshot: don't mutate the table's internal list by alias."""
-    table.update_rows([row.copy() for row in rows], clear_selection=False)
-    table.visible = bool(rows)
+    """Replace browser table state and explicitly render, including on first upload."""
+    table.rows = [row.copy() for row in rows]
+    table.update()
+
+
+async def add_uploaded_patterns(file, rows: list[dict], table) -> int:
+    """Import and immediately display uploaded patterns without another UI action."""
+    new_rows = await inspect_uploaded_file(file)
+    rows.extend(namespace_uploaded_rows(new_rows, uuid4().hex))
+    replace_inventory_table_rows(table, rows)
+    return len(new_rows)
 
 
 def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
@@ -84,9 +92,21 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
         rows: list[dict] = []
         fabric_settings = DEFAULT_FABRIC_SETTINGS.copy()
         ui.colors(primary="#17657b")
-        with ui.column().classes("w-full max-w-6xl mx-auto p-5 gap-5"):
-            ui.label("Garment Nesting Optimizer").classes("text-2xl font-semibold")
-            ui.label("Local workspace · Input / Processor / Output").classes("text-gray-600")
+        ui.add_head_html("""
+            <style>
+              .nesting-input .q-field__label { font-size: 1rem; }
+              .nesting-inventory .q-table thead th {
+                font-size: 1rem; font-weight: 700;
+              }
+              .nesting-inventory .q-table tbody td { font-size: 0.975rem; }
+              #pattern-editor { scroll-margin-top: 18px; }
+            </style>
+        """)
+        with ui.column().classes("w-full max-w-7xl mx-auto p-5 gap-5"):
+            ui.label("Garment Nesting Optimizer").classes("text-4xl font-bold")
+            ui.label("Local workspace · Input / Processor / Output").classes(
+                "text-base text-gray-600"
+            )
             with ui.row().classes("w-full gap-3"):
                 for title, description in (
                     ("1 · Input", "Import and validate SVG patterns"),
@@ -94,16 +114,16 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
                     ("3 · Output", "Compare candidates and export the selected layout"),
                 ):
                     with ui.card().classes("flex-1 min-w-60"):
-                        ui.label(title).classes("font-semibold")
-                        ui.label(description).classes("text-sm text-gray-600")
+                        ui.label(title).classes("text-lg font-semibold")
+                        ui.label(description).classes("text-base text-gray-600")
             with ui.card().classes("w-full"):
-                ui.label("Fabric & nesting inputs").classes("text-lg font-semibold")
+                ui.label("Fabric & nesting inputs").classes("text-2xl font-bold")
                 ui.label(
                     "Measurements are in inches. Left/right margins reserve unusable "
                     "selvedge; start/end margins reserve roll length. Piece gap is the "
                     "base spacing before each pattern's extra keep-out margin."
-                ).classes("text-sm text-gray-600")
-                dimensions = ui.label().classes("font-medium")
+                ).classes("text-base text-gray-600")
+                dimensions = ui.label().classes("text-lg font-semibold")
 
                 def update_dimensions() -> None:
                     effective = (
@@ -151,19 +171,51 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
                             min=0,
                             step=step,
                             on_change=lambda e, field=field: change_fabric(e, field),
-                        ).props("dense outlined").classes("w-full")
+                        ).props("outlined").classes("w-full nesting-input")
                 update_dimensions()
-            with ui.card().classes("w-full"):
-                ui.label("Pattern inventory").classes("text-lg font-semibold")
+            with ui.card().classes("w-full gap-4"):
+                ui.label("Pattern inventory").classes("text-2xl font-bold")
                 ui.label(
-                    "Upload one or more SVG files. Files are inspected using the existing "
-                    "input and geometry layers; no uploaded files are permanently saved yet."
-                ).classes("text-sm text-gray-600")
+                    "Step 1 · Upload your SVG files"
+                ).classes("text-xl font-semibold")
                 ui.label(
-                    "Set copies, select which cutting pieces to nest, and choose the "
-                    "allowed grain-safe rotation and extra piece keep-out margin. "
-                    "Zero copies means skip; invalid patterns cannot be included."
-                ).classes("text-sm text-gray-600")
+                    "Select one or more SVG files. Each file is validated automatically, "
+                    "and its pattern rows appear below as soon as the import finishes."
+                ).classes("text-base text-gray-600")
+
+                async def uploaded(e) -> None:
+                    try:
+                        count = await add_uploaded_patterns(e.file, rows, table)
+                    except (ValueError, OSError, RuntimeError, TypeError) as exc:
+                        ui.notify(f"Cannot inspect {e.file.name}: {exc}", type="negative")
+                        return
+                    refresh(update_table=False)
+                    import_status.text = (
+                        f"{count} patterns imported from {e.file.name}. "
+                        "Edit quantities, inclusion, rotation and margins below."
+                    )
+                    ui.notify(f"Imported {count} patterns. Review them below.")
+                    await ui.run_javascript(
+                        'document.getElementById("pattern-editor")'
+                        '?.scrollIntoView({behavior: "smooth", block: "start"})'
+                    )
+
+                ui.upload(
+                    on_upload=uploaded, multiple=True, auto_upload=True,
+                    max_file_size=15_000_000, max_files=20,
+                ).props("accept=.svg").classes("w-full").style(
+                    "max-height: 145px; overflow: auto;"
+                )
+                ui.label("Step 2 · Review and edit pieces").classes(
+                    "text-xl font-semibold"
+                ).props("id=pattern-editor")
+                import_status = ui.label(
+                    "No SVG uploaded yet. The editable table will populate automatically."
+                ).classes("text-base text-gray-600")
+                ui.label(
+                    "Set copies (including zero to skip), inclusion, 0°/180° rotations, "
+                    "and optional extra keep-out margins for each piece."
+                ).classes("text-base text-gray-600")
                 columns = [
                     {"name": "included", "label": "Include", "field": "included", "align": "center"},
                     {"name": "source", "label": "Source SVG", "field": "source", "align": "left"},
@@ -173,17 +225,22 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
                     {"name": "rotation", "label": "Allowed rotation", "field": "rotation"},
                     {"name": "piece_margin_in", "label": "Extra piece margin (in)", "field": "piece_margin_in"},
                 ]
-                summary = ui.label("0 patterns · 0 pieces selected").classes("font-semibold")
+                summary = ui.label("0 patterns · 0 pieces selected").classes(
+                    "text-lg font-semibold"
+                )
                 table = ui.table(
                     columns=columns,
                     rows=[],  # independent from mutable per-session server inventory
                     row_key="id",
                     pagination={"rowsPerPage": 25},
-                ).classes("w-full").props('rows-per-page-options="[10,25,50,0]"')
-                table.visible = False
+                ).classes("w-full nesting-inventory").props(
+                    'rows-per-page-options="[10,25,50,0]"'
+                )
+                # Do not hide the table. Quasar may not reveal a hidden table
+                # on the first upload; an empty table still shows its columns.
                 empty_inventory = ui.label(
-                    "Upload one or more SVGs to display their pattern inventory."
-                ).classes("text-sm text-gray-600")
+                    "Upload an SVG above; editable pattern rows will appear here."
+                ).classes("text-base text-gray-600")
 
                 table.add_slot("body-cell-included", r"""
                     <q-td :props="props">
@@ -234,17 +291,16 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
                     </q-td>
                 """)
 
-                def refresh() -> None:
+                def refresh(*, update_table: bool = True) -> None:
                     totals = selection_summary(rows)
                     summary.text = (
                         f"{totals['included_patterns']} of {totals['imported_patterns']} "
                         f"patterns included · {totals['included_pieces']} pieces to nest · "
                         f"{totals['invalid_patterns']} invalid"
                     )
-                    # Use explicit row replacement: mutating shared rows can leave
-                    # the initially empty table unchanged until a second click.
-                    replace_inventory_table_rows(table, rows)
-                    empty_inventory.visible = not bool(rows)
+                    if update_table:
+                        replace_inventory_table_rows(table, rows)
+                    empty_inventory.set_visibility(not bool(rows))
 
                 def change(e) -> None:
                     try:
@@ -271,29 +327,15 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
                     ui.button("Include all valid", on_click=select_all).props("outline")
                     ui.button("Exclude all", on_click=exclude_all).props("outline")
 
-                async def uploaded(e) -> None:
-                    try:
-                        new_rows = await inspect_uploaded_file(e.file)
-                    except (ValueError, OSError, RuntimeError, TypeError) as exc:
-                        ui.notify(f"Cannot inspect {e.file.name}: {exc}", type="negative")
-                        return
-                    rows.extend(namespace_uploaded_rows(new_rows, uuid4().hex))
-                    refresh()
-                    ui.notify(f"Imported {len(new_rows)} patterns from {e.file.name}")
-
-                ui.upload(
-                    on_upload=uploaded, multiple=True, auto_upload=True,
-                    max_file_size=15_000_000, max_files=20,
-                ).props("accept=.svg").classes("w-full")
                 ui.label(
                     "Zero copies or unchecked patterns contribute no pieces. "
                     "All margins are keep-out/placement inputs, not seam allowances; "
                     "SVG cutting paths are never altered. Settings remain in this "
                     "browser session and are not yet used by the PackingSolver."
-                ).classes("text-sm text-gray-600")
+                ).classes("text-base text-gray-600")
 
                 with ui.dialog() as preview_dialog, ui.card().classes("w-full max-w-3xl"):
-                    ui.label("Validated job configuration").classes("text-lg font-semibold")
+                    ui.label("Validated job configuration").classes("text-2xl font-semibold")
                     preview_output = ui.code("", language="json").classes(
                         "w-full max-h-96 overflow-auto"
                     )
