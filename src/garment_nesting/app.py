@@ -2,13 +2,18 @@
 from __future__ import annotations
 
 import argparse
+import errno
+import hashlib
+import json
 import os
 import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 import webbrowser
+from contextlib import contextmanager
 from multiprocessing import freeze_support
 from pathlib import Path
 from threading import Thread, current_thread, main_thread
@@ -80,6 +85,90 @@ def _select_development_port(requested_port: int | None, *, preferred_port: int 
         return int(probe.getsockname()[1]), True
 
 
+def _dev_lock_path(root: Path) -> Path:
+    """A stable lock for this checkout, not a lock on an individual TCP port."""
+    digest = hashlib.sha256(str(root.resolve()).encode()).hexdigest()[:20]
+    return Path(tempfile.gettempdir()) / f"garment-nesting-dev-{digest}.lock"
+
+
+@contextmanager
+def _dev_instance_lock(root: Path):
+    """Hold a cross-process advisory lock for the lifetime of one dev launcher.
+
+    The OS releases this lock even on SIGKILL. Keep the file itself in place
+    between runs; unlinking a locked file could allow competing lock inodes.
+    """
+    with _dev_lock_path(root).open("a+", encoding="utf-8") as state:
+        if os.name == "nt":
+            import msvcrt
+
+            state.seek(0, os.SEEK_END)
+            if state.tell() == 0:
+                state.write(" ")
+                state.flush()
+            state.seek(0)
+            try:
+                msvcrt.locking(state.fileno(), msvcrt.LK_NBLCK, 1)
+            except OSError as exc:
+                if exc.errno not in (errno.EACCES, errno.EAGAIN):
+                    raise
+                yield None, _read_dev_state(state)
+                return
+            try:
+                yield state, None
+            finally:
+                state.seek(0)
+                msvcrt.locking(state.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            try:
+                fcntl.flock(state.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError as exc:
+                if exc.errno not in (errno.EACCES, errno.EAGAIN):
+                    raise
+                yield None, _read_dev_state(state)
+                return
+            try:
+                yield state, None
+            finally:
+                fcntl.flock(state.fileno(), fcntl.LOCK_UN)
+
+
+def _read_dev_state(state) -> dict:
+    state.seek(0)
+    try:
+        data = json.loads(state.read())
+    except (ValueError, TypeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _write_dev_state(state, port: int) -> None:
+    state.seek(0)
+    state.truncate()
+    state.write(json.dumps({"port": port, "launcher_pid": os.getpid()}))
+    state.flush()
+
+
+def _reuse_existing_dev(state: dict, *, show: bool) -> int:
+    """A second invocation reuses the current browser URL; never spawns a child."""
+    port = state.get("port")
+    if not isinstance(port, int) or not 1 <= port <= 65535:
+        print("Development launcher already starting; no additional server opened.")
+        return 0
+    url = f"http://127.0.0.1:{port}"
+    print(f"Development server already running or starting at {url}; reusing it.")
+    if show:
+        try:
+            with urlopen(f"{url}/health", timeout=0.5) as response:
+                if response.status == 200 and b'"application":"garment-nesting"' in response.read():
+                    webbrowser.open(url)
+        except OSError:
+            print("Existing server is starting; open the URL when ready.")
+    return 0
+
+
 def _watch_parent_pipe(read_fd: int) -> None:
     """Stop an orphan server if its supervising dev process disappears.
 
@@ -123,20 +212,28 @@ def _exit_on_signal(_signum, _frame) -> None:
 
 
 def run_development_server(port: int | None = None, *, show: bool = True) -> int:
-    """Hot-reload by supervising the reliable reload=False server mode.
-
-    NiceGUI's own reload process cannot reliably re-execute a Python -m
-    module entrypoint. A small parent watcher restarts the server subprocess
-    when our application's Python code changes.
-    """
-    try:
-        port, used_fallback = _select_development_port(port)
-    except ValueError as exc:
-        print(str(exc), file=sys.stderr)
-        return 2
-    if used_fallback:
-        print(f"Port 8080 occupied; automatically using port {port}.", flush=True)
+    """Enforce one dev server per checkout, with reuse and orphan protection."""
     root = Path(__file__).resolve().parent
+    with _dev_instance_lock(root) as (owner, existing):
+        if owner is None:
+            return _reuse_existing_dev(existing, show=show)
+        try:
+            selected_port, used_fallback = _select_development_port(port)
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        _write_dev_state(owner, selected_port)
+        if used_fallback:
+            print(
+                f"Port 8080 occupied; using port {selected_port} "
+                "for this single development instance.",
+                flush=True,
+            )
+        return _run_owned_dev_server(selected_port, show=show, root=root)
+
+
+def _run_owned_dev_server(port: int, *, show: bool, root: Path) -> int:
+    """Watch Python files and supervise exactly one NiceGUI child."""
     command = [
         sys.executable, "-m", "garment_nesting.app",
         "serve", "--host", "127.0.0.1", "--port", str(port),
