@@ -65,6 +65,12 @@ async def inspect_uploaded_file(file) -> list[dict]:
     return await run.io_bound(inspect_upload, file.name, content)
 
 
+def replace_inventory_table_rows(table, rows: list[dict]) -> None:
+    """Push a fresh snapshot: don't mutate the table's internal list by alias."""
+    table.update_rows([row.copy() for row in rows], clear_selection=False)
+    table.visible = bool(rows)
+
+
 def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
     """Serve browser UI; localhost in development and LAN only on explicit launch."""
     from nicegui import app, ui
@@ -237,8 +243,7 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
                     )
                     # Use explicit row replacement: mutating shared rows can leave
                     # the initially empty table unchanged until a second click.
-                    table.update_rows([row.copy() for row in rows], clear_selection=False)
-                    table.visible = bool(rows)
+                    replace_inventory_table_rows(table, rows)
                     empty_inventory.visible = not bool(rows)
 
                 def change(e) -> None:
