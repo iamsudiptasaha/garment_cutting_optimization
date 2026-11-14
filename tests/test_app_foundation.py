@@ -118,3 +118,18 @@ def test_dev_module_starts_with_hot_reload_enabled(tmp_path):
         except subprocess.TimeoutExpired:
             os.killpg(process.pid, signal.SIGKILL)
             process.wait(timeout=5)
+
+
+
+def test_dev_watcher_detects_python_file_changes(tmp_path):
+    from garment_nesting.app import _snapshot
+
+    before = _snapshot(tmp_path)
+    file = tmp_path / "ui.py"
+    file.write_text("version = 1\n", encoding="utf-8")
+    added = _snapshot(tmp_path)
+    assert added != before
+    file.write_text("version = 2\n", encoding="utf-8")
+    assert _snapshot(tmp_path) != added
+    file.unlink()
+    assert _snapshot(tmp_path) == before

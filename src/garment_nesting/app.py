@@ -1,11 +1,80 @@
-"""Entrypoint for one-click desktop host and live-reloading localhost development."""
+"""CLI entrypoint for local development and a one-click LAN desktop host."""
 from __future__ import annotations
 
 import argparse
 import os
+import subprocess
 import sys
+import time
+import webbrowser
 from multiprocessing import freeze_support
 from pathlib import Path
+from urllib.request import urlopen
+
+
+def _snapshot(root: Path) -> tuple[tuple[str, int], ...]:
+    """Watch application Python source, including additions and deletions."""
+    return tuple(sorted(
+        (str(p), p.stat().st_mtime_ns)
+        for p in root.rglob("*.py")
+        if p.is_file()
+    ))
+
+
+def _stop_process(process: subprocess.Popen) -> None:
+    if process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=5)
+
+
+def run_development_server(port: int, *, show: bool = True) -> int:
+    """Hot-reload by supervising the reliable reload=False server mode.
+
+    NiceGUI's own reload process cannot reliably re-execute a Python -m
+    module entrypoint. A small parent watcher restarts the server subprocess
+    when our application's Python code changes.
+    """
+    root = Path(__file__).resolve().parent
+    command = [
+        sys.executable, "-m", "garment_nesting.app",
+        "serve", "--host", "127.0.0.1", "--port", str(port),
+    ]
+    seen = _snapshot(root)
+    process: subprocess.Popen | None = None
+    browser_opened = not show
+    try:
+        while True:
+            if process is None:
+                process = subprocess.Popen(command)
+                print(f"Local GUI: http://127.0.0.1:{port}", flush=True)
+            if process.poll() is not None:
+                print(f"Local GUI stopped (exit {process.returncode})", file=sys.stderr)
+                return process.returncode or 1
+            if not browser_opened:
+                try:
+                    with urlopen(f"http://127.0.0.1:{port}/health", timeout=0.25) as response:
+                        if response.status == 200:
+                            webbrowser.open(f"http://127.0.0.1:{port}")
+                            browser_opened = True
+                except OSError:
+                    pass
+            time.sleep(0.4)
+            updated = _snapshot(root)
+            if updated != seen:
+                print("Python source changed; restarting local GUI", flush=True)
+                _stop_process(process)
+                process = None
+                seen = updated
+    except KeyboardInterrupt:
+        return 0
+    finally:
+        if process is not None:
+            _stop_process(process)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -34,10 +103,7 @@ def main(argv: list[str] | None = None) -> int:
             print("NestingOptimizer bundled dependencies OK")
         return 0
     if args.command == "dev":
-        from garment_nesting.webapp import run_server
-
-        run_server(host="127.0.0.1", port=args.port, reload=True, show=not args.no_browser)
-        return 0
+        return run_development_server(args.port, show=not args.no_browser)
     if args.command == "serve":
         from garment_nesting.webapp import run_server
 
@@ -52,8 +118,6 @@ def main(argv: list[str] | None = None) -> int:
     return 2
 
 
-# NiceGUI hot reload spawns a process which executes this module as __mp_main__.
-# Both parent and child must call ui.run(), or the child refuses to start.
-if __name__ in {"__main__", "__mp_main__"}:
+if __name__ == "__main__":
     freeze_support()
     sys.exit(main())
