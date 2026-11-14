@@ -3,12 +3,15 @@ from __future__ import annotations
 
 import argparse
 import os
+import signal
+import socket
 import subprocess
 import sys
 import time
 import webbrowser
 from multiprocessing import freeze_support
 from pathlib import Path
+from threading import current_thread, main_thread
 from urllib.request import urlopen
 
 
@@ -22,14 +25,48 @@ def _snapshot(root: Path) -> tuple[tuple[str, int], ...]:
 
 
 def _stop_process(process: subprocess.Popen) -> None:
+    """Shut down the server and any processes in its private POSIX group."""
     if process.poll() is not None:
         return
-    process.terminate()
+    if os.name == "posix":
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            return
+    else:
+        process.terminate()
     try:
         process.wait(timeout=5)
     except subprocess.TimeoutExpired:
-        process.kill()
+        if os.name == "posix":
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        else:
+            process.kill()
         process.wait(timeout=5)
+
+
+def _port_available(port: int) -> bool:
+    """Check availability before launching a second instance."""
+    if not 1 <= port <= 65535:
+        return False
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        # Match uvicorn's SO_REUSEADDR semantics: recently closed HTTP
+        # connections can retain TIME_WAIT sockets without an active listener.
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            probe.bind(("127.0.0.1", port))
+        except OSError:
+            return False
+    return True
+
+
+def _exit_on_signal(_signum, _frame) -> None:
+    """Let finally terminate the child on SIGTERM or terminal hang-up."""
+    raise KeyboardInterrupt
+
 
 
 def run_development_server(port: int, *, show: bool = True) -> int:
@@ -39,6 +76,13 @@ def run_development_server(port: int, *, show: bool = True) -> int:
     module entrypoint. A small parent watcher restarts the server subprocess
     when our application's Python code changes.
     """
+    if not _port_available(port):
+        print(
+            f"Cannot start localhost GUI on port {port}: port is occupied "
+            f"or invalid. Check with: lsof -nP -iTCP:{port} -sTCP:LISTEN",
+            file=sys.stderr,
+        )
+        return 2
     root = Path(__file__).resolve().parent
     command = [
         sys.executable, "-m", "garment_nesting.app",
@@ -47,10 +91,16 @@ def run_development_server(port: int, *, show: bool = True) -> int:
     seen = _snapshot(root)
     process: subprocess.Popen | None = None
     browser_opened = not show
+    previous_handlers = {}
+    if current_thread() is main_thread():
+        for signum in (signal.SIGTERM, getattr(signal, "SIGHUP", None)):
+            if signum is not None:
+                previous_handlers[signum] = signal.getsignal(signum)
+                signal.signal(signum, _exit_on_signal)
     try:
         while True:
             if process is None:
-                process = subprocess.Popen(command)
+                process = subprocess.Popen(command, start_new_session=os.name == "posix")
                 print(f"Local GUI: http://127.0.0.1:{port}", flush=True)
             if process.poll() is not None:
                 print(f"Local GUI stopped (exit {process.returncode})", file=sys.stderr)
@@ -75,6 +125,8 @@ def run_development_server(port: int, *, show: bool = True) -> int:
     finally:
         if process is not None:
             _stop_process(process)
+        for signum, handler in previous_handlers.items():
+            signal.signal(signum, handler)
 
 
 def main(argv: list[str] | None = None) -> int:
