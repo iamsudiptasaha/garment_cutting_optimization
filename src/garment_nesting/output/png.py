@@ -58,10 +58,8 @@ def _render(source: Path, width_px: int, height_px: int) -> bytes:
     # conversion only, normalize canvas sizes to CSS pixels; keep the original
     # vector SVG and its inch-based fabric measurements unchanged.
     root = ET.parse(source).getroot()
-    width_in = _inches(root.get("width"))
-    height_in = _inches(root.get("height"))
-    root.set("width", f"{width_in * 96:g}px")
-    root.set("height", f"{height_in * 96:g}px")
+    root.set("width", f"{width_px}px")
+    root.set("height", f"{height_px}px")
     return resvg_py.svg_to_bytes(
         svg_string=ET.tostring(root, encoding="unicode"),
         width=width_px, height=height_px, background="#ffffff",
