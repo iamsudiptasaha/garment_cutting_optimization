@@ -44,6 +44,7 @@ def test_all_reference_patterns_are_enabled_by_default_without_modifying_svg():
 
 def test_quantity_and_rotation_edits_affect_selected_job_not_original_input():
     rows = _sample_rows()
+    before = SAMPLE.read_bytes()
     first = rows[0]
     edit_pattern(rows, first["id"], "qty", "4")
     edit_pattern(rows, first["id"], "rotation", "180° only")
@@ -61,7 +62,7 @@ def test_quantity_and_rotation_edits_affect_selected_job_not_original_input():
     }
     assert selected[1]["copies"] == 2
     assert selected[1]["allowed_rotations_deg"] == [0, 180]
-    assert SAMPLE.read_bytes() == SAMPLE.read_bytes()
+    assert SAMPLE.read_bytes() == before
 
 
 def test_inclusion_excludes_instances_without_erasing_quantity_or_rotation():
