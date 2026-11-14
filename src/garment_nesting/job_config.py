@@ -25,10 +25,8 @@ MAX_PIECE_MARGIN_IN = 12.0
 
 def nonnegative_inches(value: object, field: str, *, maximum: float) -> float:
     """Parse finite decimal inches and reject booleans, NaN and negative values."""
-    if isinstance(value, bool):
-        raise ValueError(f"{field} must be a finite nonnegative number in inches")
     try:
-        result = float(value)
+        result = float(value) if not isinstance(value, bool) else float("nan")
     except (TypeError, ValueError, OverflowError) as exc:
         raise ValueError(f"{field} must be a finite nonnegative number in inches") from exc
     if not isfinite(result) or not 0 <= result <= maximum:
@@ -42,9 +40,7 @@ def piece_margin_from_input(value: object) -> float:
 
 
 def _time_seconds(value: object) -> int:
-    if isinstance(value, bool):
-        raise ValueError("Time limit must be a whole number of seconds from 1 to 3600")
-    if isinstance(value, int):
+    if isinstance(value, int) and not isinstance(value, bool):
         result = value
     elif isinstance(value, float) and value.is_integer():
         result = int(value)
@@ -60,8 +56,8 @@ def _time_seconds(value: object) -> int:
 def validate_fabric_settings(settings: dict) -> dict:
     """Return a normalized snapshot and validate compound width/length constraints."""
     normalized = {}
-    for field in DEFAULT_FABRIC_SETTINGS:
-        raw = settings.get(field, DEFAULT_FABRIC_SETTINGS[field])
+    for field, default in DEFAULT_FABRIC_SETTINGS.items():
+        raw = settings.get(field, default)
         if field == "max_length_in" and (raw is None or raw == ""):
             normalized[field] = None
         elif field == "time_limit_seconds":
