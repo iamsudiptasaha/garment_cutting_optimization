@@ -35,9 +35,17 @@ def inspect_upload(name: str, data: bytes) -> list[dict]:
     ]
 
 
+async def inspect_uploaded_file(file) -> list[dict]:
+    """Read NiceGUI's async upload stream before passing bytes to the sync validator."""
+    from nicegui import run
+
+    content = await file.read()
+    return await run.io_bound(inspect_upload, file.name, content)
+
+
 def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
     """Serve browser UI; localhost in development and LAN only on explicit launch."""
-    from nicegui import app, run, ui
+    from nicegui import app, ui
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -76,9 +84,7 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
 
                 async def uploaded(e) -> None:
                     try:
-                        new_rows = await run.io_bound(
-                            inspect_upload, e.file.name, e.file.read(),
-                        )
+                        new_rows = await inspect_uploaded_file(e.file)
                     except (ValueError, OSError, RuntimeError, TypeError) as exc:
                         ui.notify(f"Cannot inspect {e.file.name}: {exc}", type="negative")
                         return
