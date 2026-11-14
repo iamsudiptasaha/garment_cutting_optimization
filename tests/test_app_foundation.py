@@ -1,6 +1,7 @@
 """GUI foundation tests: existing input pipeline and desktop host contracts."""
 from __future__ import annotations
 
+import asyncio
 import os
 import signal
 import socket
@@ -13,7 +14,7 @@ from urllib.request import urlopen
 import pytest
 
 from garment_nesting.desktop import lan_address, server_command
-from garment_nesting.webapp import inspect_upload
+from garment_nesting.webapp import inspect_upload, inspect_uploaded_file
 
 SAMPLE = Path(__file__).resolve().parents[1] / "samples" / "FC_HH_Full_Pyjama.svg"
 
@@ -133,3 +134,30 @@ def test_dev_watcher_detects_python_file_changes(tmp_path):
     assert _snapshot(tmp_path) != added
     file.unlink()
     assert _snapshot(tmp_path) == before
+
+
+def test_nicegui_async_upload_is_awaited_before_validation(monkeypatch):
+    """Uploaded bytes must be read, not passed as a coroutine to len()."""
+    from nicegui import run
+
+    payload = SAMPLE.read_bytes()
+    called = []
+
+    class UploadedFile:
+        name = SAMPLE.name
+
+        async def read(self):
+            called.append("read")
+            return payload
+
+    async def fake_io_bound(function, name, data):
+        assert isinstance(data, bytes)
+        assert name == SAMPLE.name
+        called.append("validate")
+        return function(name, data)
+
+    monkeypatch.setattr(run, "io_bound", fake_io_bound)
+    rows = asyncio.run(inspect_uploaded_file(UploadedFile()))
+    assert called == ["read", "validate"]
+    assert len(rows) == 44
+    assert all(row["valid"] == "Valid" for row in rows)
