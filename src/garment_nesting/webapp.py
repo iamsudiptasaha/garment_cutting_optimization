@@ -18,6 +18,7 @@ from garment_nesting.job_selection import (
     selection_summary,
 )
 
+
 def _source_revision() -> str:
     """Fingerprint loaded source code so old servers cannot masquerade as updated UI."""
     try:
