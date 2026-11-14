@@ -10,6 +10,27 @@ A standalone Python project for nesting labelled CorelDRAW-exported SVG garment 
 - Validate exported geometry independently of the solver.
 - Report `NOT_FOUND` separately from mathematically proven infeasibility.
 
+## Local GUI and Windows/macOS desktop builds (foundation)
+
+For local development on a Mac or Windows PC, in the existing virtual environment:
+
+~~~bash
+python -m pip install -e ".[dev,geometry,solver,output,app]"
+python -m garment_nesting.app dev
+~~~
+
+Open http://127.0.0.1:8080. Python edits reload the local GUI.
+After a code update use `git pull origin main` and restart the command.
+The default packaged application opens a small **Start Server / Stop Server**
+desktop window; pressing Start exposes the browser GUI to the trusted LAN.
+This first-stage GUI inventories and validates multiple SVG uploads.
+Algorithm selection, editable multipliers and final export are upcoming stages.
+
+Each push to `main` automatically builds a zipped Windows x64 app and
+macOS Apple Silicon/Intel apps as GitHub Actions artifacts.
+See [desktop development and deployment](docs/runbooks/local-desktop.md)
+for detailed steps and current security/release limitations.
+
 ## Phase 0: local setup
 
 Requires Python 3.11 or newer.
@@ -50,10 +71,8 @@ are reported rather than silently placed.
 
 `verify` reports area and boundary differences at two approximation
 resolutions, but does not reject shapes for small differences by default.
-Original paths and labels remain unchanged. No nesting solver or final
-collision checker is implemented yet. When nesting is added, a small
-configurable clearance can absorb approximation error without requiring
-mathematically exact curve reconstruction.
+Original paths and labels remain unchanged. The current solver validates approximate polygon placements but does not yet
+certify the exact original SVG curve envelopes. Clearance is configurable.
 
 ## Stable input / processor / output boundaries
 

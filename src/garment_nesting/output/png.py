@@ -45,6 +45,27 @@ def _dimensions(
     return preview_width_px, height_px
 
 
+def _render(source: Path, width_px: int, height_px: int) -> bytes:
+    """Prefer bundled Rust renderer; CairoSVG remains a CLI fallback."""
+    try:
+        import resvg_py
+    except ImportError:
+        return _cairo().svg2png(
+            url=str(source), output_width=width_px,
+            output_height=height_px, background_color="white",
+        )
+    # resvg rejects some valid SVG physical dimensions ("in"). For raster
+    # conversion only, normalize canvas sizes to CSS pixels; keep the original
+    # vector SVG and its inch-based fabric measurements unchanged.
+    root = ET.parse(source).getroot()
+    root.set("width", f"{width_px}px")
+    root.set("height", f"{height_px}px")
+    return resvg_py.svg_to_bytes(
+        svg_string=ET.tostring(root, encoding="unicode"),
+        width=width_px, height=height_px, background="#ffffff",
+    )
+
+
 def _cairo():
     """Load native Cairo only during raster export, not before optimization."""
     try:
@@ -83,12 +104,7 @@ def export_rasters(
     from PIL import Image
 
     try:
-        data = _cairo().svg2png(
-            url=str(source),
-            output_width=width_px,
-            output_height=height_px,
-            background_color="white",
-        )
+        data = _render(source, width_px, height_px)
         png.write_bytes(data)
         with Image.open(BytesIO(data)) as rendered:
             rendered.convert("RGB").save(
@@ -113,9 +129,5 @@ def export_png(
     width_px, height_px = _dimensions(source, DEFAULT_WIDTH_PX, preview_ppi)
     target = Path(destination)
     target.parent.mkdir(parents=True, exist_ok=True)
-    _cairo().svg2png(
-        url=str(source), write_to=str(target),
-        output_width=width_px, output_height=height_px,
-        background_color="white",
-    )
+    target.write_bytes(_render(source, width_px, height_px))
     return target
