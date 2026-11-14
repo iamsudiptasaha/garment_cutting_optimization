@@ -44,8 +44,36 @@ lsof -nP -iTCP:8080 -sTCP:LISTEN
 ps -p <PID> -o pid,ppid,command
 ~~~
 
-After merging changes, run `git pull origin main` and restart
-`python -m garment_nesting.app dev`. Use `--no-browser` for headless tests.
+The launcher deliberately **reuses** the existing process if you type
+`dev` a second time. Reusing an outdated server or an old browser tab can
+make new GUI updates appear to have no effect. After `git pull origin main`
+on macOS/Linux, explicitly restart the verified launcher for this checkout:
+
+~~~bash
+python -m garment_nesting.app dev --restart
+~~~
+
+This sends SIGTERM only to the verified `-m garment_nesting.app dev`
+launcher that holds this checkout's advisory lock, waits for it to exit,
+then starts exactly one replacement server. It does not kill random Python
+processes or allocate additional ports. On Windows, use Ctrl-C in the old
+developer terminal and launch `dev` again (`--restart` is not supported).
+
+Check the URL **printed by the new server**, which may be different from
+the old bookmarked URL when port 8080 is occupied. The page now displays
+`UI version: <12-character hash>` at the top. The same hash is returned
+by `GET /health`. If the version label is missing, the browser is on
+an old GUI. If the hash mismatches the console, the tab is talking to a
+different process, not the version just launched.
+
+Inputs now have external, larger bold labels, rather than depending on
+the tiny floating Quasar placeholders. CI runs a real Chromium acceptance
+test: upload the reference SVG, confirm 44 pattern rows actually render
+and the numeric controls appear, measure fabric-label font size, change a
+quantity to zero and verify the summary updates. A browser screenshot
+is uploaded as the `gui-browser-acceptance-3.13` workflow artifact.
+
+Use `--no-browser` for headless tests.
 
 Re-run the pip install only if dependencies change.
 To test the desktop Start/Stop launcher from source:
