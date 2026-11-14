@@ -90,9 +90,31 @@ def main() -> None:
             page.get_by_text("44 of 44 patterns included", exact=False).wait_for(
                 timeout=45000,
             )
-            table_rows = page.locator(".nesting-inventory .q-table tbody tr")
+            page.screenshot(
+                path=str(ARTIFACTS / "browser-immediately-after-upload.png"),
+                full_page=True,
+            )
+            dom = page.evaluate("""
+                () => ({
+                    inventoryCount: document.querySelectorAll('.nesting-inventory').length,
+                    descendantRows: document.querySelectorAll(
+                        '.nesting-inventory .q-table tbody tr').length,
+                    inventoryRows: document.querySelectorAll(
+                        '.nesting-inventory tbody tr').length,
+                    globalRows: document.querySelectorAll('.q-table tbody tr').length,
+                    inventoryText: document.querySelector('.nesting-inventory')?.innerText?.slice(0, 1500),
+                    inventoryHtml: document.querySelector('.nesting-inventory')?.outerHTML?.slice(0, 3500),
+                })
+            """)
+            print("Browser DOM after upload:", json.dumps(dom, indent=2), flush=True)
+            print("Browser page errors:", json.dumps(errors), flush=True)
+            (ARTIFACTS / "dom-after-upload.json").write_text(
+                json.dumps({"dom": dom, "page_errors": errors}, indent=2),
+                encoding="utf-8",
+            )
+            table_rows = page.locator(".nesting-inventory tbody tr")
             page.wait_for_function(
-                "() => document.querySelectorAll('.nesting-inventory .q-table tbody tr').length >= 25",
+                "() => document.querySelectorAll('.nesting-inventory tbody tr').length >= 25",
                 timeout=15000,
             )
             assert table_rows.count() >= 25
