@@ -9,13 +9,21 @@ python -m pip install -e ".[dev,geometry,solver,output,app]"
 python -m garment_nesting.app dev
 ~~~
 
-The module also re-enters via the __mp_main__ process during NiceGUI hot reload.\nThe development launcher accepts --no-browser for headless testing.\n\nOpen http://127.0.0.1:8080 in your browser. The NiceGUI development server
-restarts on Python code changes. Stop with Ctrl-C. After merging updates:
+The development command supervises a separate reload-disabled NiceGUI
+server. It restarts the server when application Python files change, avoiding
+NiceGUI's multiprocessing reload issue with `python -m`.
+
+Open http://127.0.0.1:8080. Stop with Ctrl-C. The watcher also stops the
+child server on termination (SIGTERM) or terminal hang-up (SIGHUP).
+If port 8080 is already in use, it explains the conflict instead of creating
+another orphaned process. On macOS, identify an old listener with:
 
 ~~~bash
-git pull origin main
-python -m garment_nesting.app dev
+lsof -nP -iTCP:8080 -sTCP:LISTEN
 ~~~
+
+After merging changes, run `git pull origin main` and restart
+`python -m garment_nesting.app dev`. Use `--no-browser` for headless tests.
 
 Re-run the pip install only if dependencies change.
 To test the desktop Start/Stop launcher from source:
