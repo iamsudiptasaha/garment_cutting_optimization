@@ -228,6 +228,20 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
                 summary = ui.label("0 patterns · 0 pieces selected").classes(
                     "text-lg font-semibold"
                 )
+                with ui.row().classes("gap-3"):
+                    def select_all() -> None:
+                        for row in rows:
+                            row["included"] = row["valid"] == "Valid"
+                        refresh()
+
+                    def exclude_all() -> None:
+                        for row in rows:
+                            row["included"] = False
+                        refresh()
+
+                    ui.button("Include all valid", on_click=select_all).props("outline")
+                    ui.button("Exclude all", on_click=exclude_all).props("outline")
+
                 table = ui.table(
                     columns=columns,
                     rows=[],  # independent from mutable per-session server inventory
@@ -312,20 +326,6 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
                         refresh()
 
                 table.on("pattern-change", change)
-
-                with ui.row().classes("gap-3"):
-                    def select_all() -> None:
-                        for row in rows:
-                            row["included"] = row["valid"] == "Valid"
-                        refresh()
-
-                    def exclude_all() -> None:
-                        for row in rows:
-                            row["included"] = False
-                        refresh()
-
-                    ui.button("Include all valid", on_click=select_all).props("outline")
-                    ui.button("Exclude all", on_click=exclude_all).props("outline")
 
                 ui.label(
                     "Zero copies or unchecked patterns contribute no pieces. "
