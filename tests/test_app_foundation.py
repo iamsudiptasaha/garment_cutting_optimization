@@ -14,7 +14,11 @@ from urllib.request import urlopen
 import pytest
 
 from garment_nesting.desktop import lan_address, server_command
-from garment_nesting.webapp import inspect_upload, inspect_uploaded_file
+from garment_nesting.webapp import (
+    inspect_upload,
+    inspect_uploaded_file,
+    replace_inventory_table_rows,
+)
 
 SAMPLE = Path(__file__).resolve().parents[1] / "samples" / "FC_HH_Full_Pyjama.svg"
 
@@ -25,7 +29,7 @@ def test_inventory_from_existing_svg_without_mutating_input():
     assert len(rows) == 44
     assert all(row["source"] == SAMPLE.name for row in rows)
     assert all(row["valid"] == "Valid" for row in rows)
-    assert all(row["qty"] == 1 for row in rows)
+    assert all(row["qty"] == 1 and row["piece_margin_in"] == 0 for row in rows)
     assert SAMPLE.read_bytes() == original
 
 
@@ -178,3 +182,35 @@ def test_nicegui_async_upload_is_awaited_before_validation(monkeypatch):
     assert called == ["read", "validate"]
     assert len(rows) == 44
     assert all(row["valid"] == "Valid" for row in rows)
+
+
+
+def test_first_svg_upload_reveals_populated_table_without_extra_click():
+    """Initial table must be an independent collection, and explicitly replaced."""
+    original = []
+    class MockTable:
+        def __init__(self):
+            self.rows = []
+            self.visible = False
+            self.calls = 0
+
+        def update_rows(self, rows, *, clear_selection):
+            assert clear_selection is False
+            self.rows = rows
+            self.calls += 1
+
+    table = MockTable()
+    rows = inspect_upload(SAMPLE.name, SAMPLE.read_bytes())
+    original.extend(rows)
+    replace_inventory_table_rows(table, original)
+    assert table.visible is True
+    assert table.calls == 1
+    assert len(table.rows) == 44
+    assert table.rows is not original
+    assert table.rows[0] is not original[0]
+    original[0]["qty"] = 7
+    assert table.rows[0]["qty"] == 1  # subsequent mutation doesn't alias widget state
+    replace_inventory_table_rows(table, original)
+    assert table.rows[0]["qty"] == 7
+    replace_inventory_table_rows(table, [])
+    assert table.visible is False

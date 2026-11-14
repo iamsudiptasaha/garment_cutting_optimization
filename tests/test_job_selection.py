@@ -58,6 +58,7 @@ def test_quantity_and_rotation_edits_affect_selected_job_not_original_input():
         "source_file": SAMPLE.name,
         "group_id": first["group"],
         "copies": 4,
+        "piece_margin_in": 0.0,
         "allowed_rotations_deg": [180],
     }
     assert selected[1]["copies"] == 2
@@ -85,7 +86,7 @@ def test_inclusion_excludes_instances_without_erasing_quantity_or_rotation():
 
 @pytest.mark.parametrize(
     "quantity",
-    [0, -1, 10001, 2.5, "2.5", "nan", "", None, True, False, "2e3"],
+    [-1, 10001, 2.5, "2.5", "nan", "", None, True, False, "2e3"],
 )
 def test_invalid_quantities_are_rejected_atomically(quantity):
     rows = _sample_rows()
@@ -95,7 +96,7 @@ def test_invalid_quantities_are_rejected_atomically(quantity):
     assert rows[0]["qty"] == old
 
 
-@pytest.mark.parametrize("quantity,expected", [(1, 1), ("003", 3), (5.0, 5), (10000, 10000)])
+@pytest.mark.parametrize("quantity,expected", [(0, 0), ("0", 0), (1, 1), ("003", 3), (5.0, 5), (10000, 10000)])
 def test_valid_quantities(quantity, expected):
     assert quantity_from_input(quantity) == expected
 
@@ -161,3 +162,38 @@ def test_rejects_unknown_rows_and_non_editable_fields():
     with pytest.raises(ValueError, match="not editable"):
         edit_pattern(rows, rows[0]["id"], "group", "changed")
     assert rows[0]["group"] != "changed"
+
+
+
+def test_zero_copies_are_valid_but_excluded_from_summary_and_solver_job():
+    rows = _sample_rows()
+    first = rows[0]
+    edit_pattern(rows, first["id"], "qty", 0)
+    assert first["included"] is True  # checkbox preference is preserved
+    totals = selection_summary(rows)
+    assert totals["included_patterns"] == 43
+    assert totals["included_pieces"] == 43
+    assert len(selected_job_rows(rows)) == 43
+    edit_pattern(rows, first["id"], "qty", 3)
+    assert selection_summary(rows)["included_pieces"] == 46
+    assert len(selected_job_rows(rows)) == 44
+
+
+@pytest.mark.parametrize("margin", [-1, "-.1", "nan", "inf", 13, None, True, ""])
+def test_invalid_piece_margin_rejected_atomically(margin):
+    rows = _sample_rows()
+    first = rows[0]
+    with pytest.raises(ValueError, match="Piece margin"):
+        edit_pattern(rows, first["id"], "piece_margin_in", margin)
+    assert first["piece_margin_in"] == 0.0
+
+
+def test_nonnegative_piece_margin_is_in_payload_only():
+    original_svg = SAMPLE.read_bytes()
+    rows = _sample_rows()
+    first = rows[0]
+    edit_pattern(rows, first["id"], "piece_margin_in", "0.125")
+    selected = selected_job_rows(rows)
+    assert selected[0]["piece_margin_in"] == 0.125
+    assert selected[1]["piece_margin_in"] == 0.0
+    assert SAMPLE.read_bytes() == original_svg

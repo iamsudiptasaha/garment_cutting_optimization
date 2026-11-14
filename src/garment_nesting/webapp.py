@@ -6,6 +6,11 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from uuid import uuid4
 
+from garment_nesting.job_config import (
+    DEFAULT_FABRIC_SETTINGS,
+    edit_fabric_setting,
+    job_input_payload,
+)
 from garment_nesting.job_selection import (
     edit_pattern,
     namespace_uploaded_rows,
@@ -47,6 +52,7 @@ def inspect_upload(name: str, data: bytes) -> list[dict]:
             "included": valid,
             "qty": 1,
             "rotation": "0°, 180°",
+            "piece_margin_in": 0.0,
         })
     return rows
 
@@ -57,6 +63,12 @@ async def inspect_uploaded_file(file) -> list[dict]:
 
     content = await file.read()
     return await run.io_bound(inspect_upload, file.name, content)
+
+
+def replace_inventory_table_rows(table, rows: list[dict]) -> None:
+    """Push a fresh snapshot: don't mutate the table's internal list by alias."""
+    table.update_rows([row.copy() for row in rows], clear_selection=False)
+    table.visible = bool(rows)
 
 
 def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
@@ -70,6 +82,7 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
     @ui.page("/")
     def home() -> None:
         rows: list[dict] = []
+        fabric_settings = DEFAULT_FABRIC_SETTINGS.copy()
         ui.colors(primary="#17657b")
         with ui.column().classes("w-full max-w-6xl mx-auto p-5 gap-5"):
             ui.label("Garment Nesting Optimizer").classes("text-2xl font-semibold")
@@ -84,6 +97,63 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
                         ui.label(title).classes("font-semibold")
                         ui.label(description).classes("text-sm text-gray-600")
             with ui.card().classes("w-full"):
+                ui.label("Fabric & nesting inputs").classes("text-lg font-semibold")
+                ui.label(
+                    "Measurements are in inches. Left/right margins reserve unusable "
+                    "selvedge; start/end margins reserve roll length. Piece gap is the "
+                    "base spacing before each pattern's extra keep-out margin."
+                ).classes("text-sm text-gray-600")
+                dimensions = ui.label().classes("font-medium")
+
+                def update_dimensions() -> None:
+                    effective = (
+                        fabric_settings["fabric_width_in"]
+                        - fabric_settings["fabric_left_margin_in"]
+                        - fabric_settings["fabric_right_margin_in"]
+                    )
+                    dimensions.text = (
+                        f"Usable width: {effective:g} in · "
+                        f"Base piece gap: {fabric_settings['piece_clearance_in']:g} in · "
+                        "Length: "
+                        + (
+                            f"maximum {fabric_settings['max_length_in']:g} in"
+                            if fabric_settings["max_length_in"] is not None
+                            else "uncapped"
+                        )
+                    )
+
+                def change_fabric(e, field: str) -> None:
+                    previous = fabric_settings[field]
+                    try:
+                        edit_fabric_setting(fabric_settings, field, e.value)
+                    except ValueError as exc:
+                        ui.notify(str(exc), type="negative")
+                        if e.sender.value != previous:
+                            e.sender.set_value(previous)
+                    finally:
+                        update_dimensions()
+
+                settings_fields = [
+                    ("fabric_width_in", "Fabric width (in)", 0.1),
+                    ("fabric_left_margin_in", "Left selvedge (in)", 0.01),
+                    ("fabric_right_margin_in", "Right selvedge (in)", 0.01),
+                    ("fabric_start_margin_in", "Start reserve (in)", 0.01),
+                    ("fabric_end_margin_in", "End reserve (in)", 0.01),
+                    ("piece_clearance_in", "Base piece gap (in)", 0.01),
+                    ("max_length_in", "Max length (in; blank = open)", 0.1),
+                    ("time_limit_seconds", "Solver time budget (s)", 1),
+                ]
+                with ui.grid(columns=4).classes("w-full gap-3"):
+                    for field, title, step in settings_fields:
+                        ui.number(
+                            title,
+                            value=fabric_settings[field],
+                            min=0,
+                            step=step,
+                            on_change=lambda e, field=field: change_fabric(e, field),
+                        ).props("dense outlined").classes("w-full")
+                update_dimensions()
+            with ui.card().classes("w-full"):
                 ui.label("Pattern inventory").classes("text-lg font-semibold")
                 ui.label(
                     "Upload one or more SVG files. Files are inspected using the existing "
@@ -91,8 +161,8 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
                 ).classes("text-sm text-gray-600")
                 ui.label(
                     "Set copies, select which cutting pieces to nest, and choose the "
-                    "allowed grain-safe rotation for each pattern. Invalid patterns "
-                    "cannot be included."
+                    "allowed grain-safe rotation and extra piece keep-out margin. "
+                    "Zero copies means skip; invalid patterns cannot be included."
                 ).classes("text-sm text-gray-600")
                 columns = [
                     {"name": "included", "label": "Include", "field": "included", "align": "center"},
@@ -101,14 +171,19 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
                     {"name": "valid", "label": "Geometry", "field": "valid", "align": "center"},
                     {"name": "qty", "label": "Copies", "field": "qty", "align": "center"},
                     {"name": "rotation", "label": "Allowed rotation", "field": "rotation"},
+                    {"name": "piece_margin_in", "label": "Extra piece margin (in)", "field": "piece_margin_in"},
                 ]
                 summary = ui.label("0 patterns · 0 pieces selected").classes("font-semibold")
                 table = ui.table(
                     columns=columns,
-                    rows=rows,
+                    rows=[],  # independent from mutable per-session server inventory
                     row_key="id",
                     pagination={"rowsPerPage": 25},
                 ).classes("w-full").props('rows-per-page-options="[10,25,50,0]"')
+                table.visible = False
+                empty_inventory = ui.label(
+                    "Upload one or more SVGs to display their pattern inventory."
+                ).classes("text-sm text-gray-600")
 
                 table.add_slot("body-cell-included", r"""
                     <q-td :props="props">
@@ -128,10 +203,10 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
                 """)
                 table.add_slot("body-cell-qty", r"""
                     <q-td :props="props">
-                      <q-input dense outlined type="number" min="1" max="10000" step="1"
+                      <q-input dense outlined type="number" min="0" max="10000" step="1"
                         style="width: 105px"
                         v-model.number="props.row.qty"
-                        :disable="!props.row.included || props.row.valid !== 'Valid'"
+                        :disable="props.row.valid !== 'Valid'"
                         @change="value => $parent.$emit('pattern-change',
                           {id: props.row.id, field: 'qty', value: value})" />
                     </q-td>
@@ -148,6 +223,17 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
                     </q-td>
                 """)
 
+                table.add_slot("body-cell-piece_margin_in", r"""
+                    <q-td :props="props">
+                      <q-input dense outlined type="number" min="0" max="12" step="0.01"
+                        style="width: 125px"
+                        v-model.number="props.row.piece_margin_in"
+                        :disable="props.row.valid !== 'Valid'"
+                        @change="value => $parent.$emit('pattern-change',
+                          {id: props.row.id, field: 'piece_margin_in', value: value})" />
+                    </q-td>
+                """)
+
                 def refresh() -> None:
                     totals = selection_summary(rows)
                     summary.text = (
@@ -155,8 +241,10 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
                         f"patterns included · {totals['included_pieces']} pieces to nest · "
                         f"{totals['invalid_patterns']} invalid"
                     )
-                    table.rows = list(rows)
-                    table.update()
+                    # Use explicit row replacement: mutating shared rows can leave
+                    # the initially empty table unchanged until a second click.
+                    replace_inventory_table_rows(table, rows)
+                    empty_inventory.visible = not bool(rows)
 
                 def change(e) -> None:
                     try:
@@ -198,10 +286,31 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
                     max_file_size=15_000_000, max_files=20,
                 ).props("accept=.svg").classes("w-full")
                 ui.label(
-                    "Changes apply to this browser session only. Pattern configuration "
-                    "will be passed to the solver registry in the next phase. "
-                    "Original SVG files remain unchanged."
+                    "Zero copies or unchecked patterns contribute no pieces. "
+                    "All margins are keep-out/placement inputs, not seam allowances; "
+                    "SVG cutting paths are never altered. Settings remain in this "
+                    "browser session and are not yet used by the PackingSolver."
                 ).classes("text-sm text-gray-600")
+
+                with ui.dialog() as preview_dialog, ui.card().classes("w-full max-w-3xl"):
+                    ui.label("Validated job configuration").classes("text-lg font-semibold")
+                    preview_output = ui.code("", language="json").classes(
+                        "w-full max-h-96 overflow-auto"
+                    )
+                    ui.button("Close", on_click=preview_dialog.close).props("flat")
+
+                def preview_job() -> None:
+                    import json
+
+                    try:
+                        payload = job_input_payload(rows, fabric_settings)
+                    except ValueError as exc:
+                        ui.notify(str(exc), type="negative")
+                        return
+                    preview_output.content = json.dumps(payload, indent=2)
+                    preview_dialog.open()
+
+                ui.button("Preview job inputs", on_click=preview_job).props("outline")
 
     ui.run(
         host=host, port=port, reload=reload, show=show,

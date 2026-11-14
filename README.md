@@ -24,10 +24,13 @@ After a code update use `git pull origin main` and restart the command.
 The default packaged application opens a small **Start Server / Stop Server**
 desktop window; pressing Start exposes the browser GUI to the trusted LAN.
 The GUI inventories and validates multiple SVG uploads and provides editable
-per-pattern inclusion, copies (1–10,000), and allowed rotations (0°, 180°,
-or both), with live piece totals. Invalid geometry cannot be included.
-These settings currently live in the browser session, not in the existing
-PackingSolver CLI. Algorithm selection, persistent job storage, model
+per-pattern inclusion, copies (0–10,000), extra keep-out margin,
+and allowed rotations (0°, 180°, or both), with live piece totals and immediate
+table rendering after upload. Zero copies are valid and do not produce solver
+instances. Fabric inputs include width, selvedges, end margins, base gap,
+an optional maximum length, and an optimizer time budget.
+These inputs are validated and previewable but are currently browser-session
+state, not yet consumed by the existing PackingSolver CLI. Algorithm selection, persistent job storage, model
 comparison and selected-result export are upcoming stages.
 
 Each push to `main` automatically builds a zipped Windows x64 app and
