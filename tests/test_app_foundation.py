@@ -73,7 +73,7 @@ def test_dev_module_starts_with_hot_reload_enabled(tmp_path):
     # A manually spawned production-style subprocess must not inherit that mode.
     env = os.environ.copy()
     for key in tuple(env):
-        if key.startswith("NICEGUI_SCREEN_TEST"):
+        if key.startswith("NICEGUI_SCREEN_TEST") or key == "PYTEST_CURRENT_TEST":
             env.pop(key)
     with log_path.open("w", encoding="utf-8") as logfile:
         process = subprocess.Popen(
