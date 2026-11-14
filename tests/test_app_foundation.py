@@ -16,6 +16,7 @@ import pytest
 
 from garment_nesting.desktop import lan_address, server_command
 from garment_nesting.webapp import (
+    add_uploaded_patterns,
     inspect_upload,
     inspect_uploaded_file,
     replace_inventory_table_rows,
@@ -187,35 +188,75 @@ def test_nicegui_async_upload_is_awaited_before_validation(monkeypatch):
 
 
 def test_first_svg_upload_reveals_populated_table_without_extra_click():
-    """Initial table must be an independent collection, and explicitly replaced."""
-    original = []
+    """Upload paints the table immediately, without hidden-element toggles."""
     class MockTable:
         def __init__(self):
             self.rows = []
-            self.visible = False
+            self.visible = True
             self.calls = 0
 
-        def update_rows(self, rows, *, clear_selection):
-            assert clear_selection is False
-            self.rows = rows
+        def update(self):
             self.calls += 1
 
     table = MockTable()
-    rows = inspect_upload(SAMPLE.name, SAMPLE.read_bytes())
-    original.extend(rows)
+    original = inspect_upload(SAMPLE.name, SAMPLE.read_bytes())
     replace_inventory_table_rows(table, original)
+
     assert table.visible is True
     assert table.calls == 1
     assert len(table.rows) == 44
     assert table.rows is not original
     assert table.rows[0] is not original[0]
     original[0]["qty"] = 7
-    assert table.rows[0]["qty"] == 1  # subsequent mutation doesn't alias widget state
+    assert table.rows[0]["qty"] == 1  # browser snapshot is independent
     replace_inventory_table_rows(table, original)
     assert table.rows[0]["qty"] == 7
     replace_inventory_table_rows(table, [])
-    assert table.visible is False
+    assert table.visible is True  # never hide the editor based on initial empty state
 
+
+def test_upload_event_populates_visible_pattern_editor_without_operator_click(monkeypatch):
+    """Exercise the actual asynchronous file-read/import/table-refresh sequence."""
+    from nicegui import run
+
+    payload = SAMPLE.read_bytes()
+
+    class UploadedFile:
+        name = SAMPLE.name
+
+        async def read(self):
+            return payload
+
+    class MockTable:
+        def __init__(self):
+            self.rows = []
+            self.visible = True
+            self.update_count = 0
+
+        def update(self):
+            self.update_count += 1
+
+    async def fake_io_bound(function, name, data):
+        return function(name, data)
+
+    monkeypatch.setattr(run, "io_bound", fake_io_bound)
+    table = MockTable()
+    state = []
+
+    count = asyncio.run(add_uploaded_patterns(UploadedFile(), state, table))
+    assert count == 44
+    assert len(state) == len(table.rows) == 44
+    assert table.update_count == 1
+    assert table.visible is True
+    assert state[0]["id"] == table.rows[0]["id"]
+    assert all(row["qty"] == 1 for row in table.rows)
+
+    # Multiple uploads retain earlier rows without requiring another click.
+    second = asyncio.run(add_uploaded_patterns(UploadedFile(), state, table))
+    assert second == 44
+    assert len(table.rows) == 88
+    assert table.update_count == 2
+    assert len({row["id"] for row in table.rows}) == 88
 
 
 def test_default_dev_port_auto_falls_back_without_touching_other_listener():
