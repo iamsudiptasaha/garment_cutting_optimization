@@ -92,8 +92,15 @@ untouched, so increasing the quantity reactivates the pattern. Invalid rows
 cannot be included; the summary counts only positive included quantities.
 The UI has Include all valid and Exclude all convenience controls.
 
-The inventory table starts hidden and becomes visible immediately on upload
-via an explicit fresh table-row update (no additional Include/Exclude click).
+The inventory table is always rendered (with empty-state instructions before
+upload). On successful upload it receives a fresh list of rows and an explicit
+NiceGUI table update, without relying on a visibility toggle or Include/Exclude
+click. The file uploader now comes before the editing table, has a compact
+height to prevent a tall SVG preview from obscuring the editor, and smoothly
+scrolls to “Step 2 · Review and edit pieces” after importing patterns.
+Headings, descriptions, input labels and table headers are larger for
+shop-floor readability.
+
 Fabric inputs are available above the inventory: width, left/right selvedge
 reserves, start/end length reserves, global piece gap, optional maximum roll
 length (blank = uncapped), and per-model solver time limit. All spatial inputs
