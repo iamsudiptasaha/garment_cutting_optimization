@@ -4,8 +4,8 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from pathlib import Path
 from multiprocessing import freeze_support
+from pathlib import Path
 
 
 def main(argv: list[str] | None = None) -> int:
