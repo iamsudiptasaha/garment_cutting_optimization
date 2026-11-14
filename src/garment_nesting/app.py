@@ -53,6 +53,9 @@ def _port_available(port: int) -> bool:
     if not 1 <= port <= 65535:
         return False
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        # Match uvicorn's SO_REUSEADDR semantics: recently closed HTTP
+        # connections can retain TIME_WAIT sockets without an active listener.
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             probe.bind(("127.0.0.1", port))
         except OSError:
