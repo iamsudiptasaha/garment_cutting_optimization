@@ -14,3 +14,8 @@ coverage.xml
 /input/*.svg
 /output/*
 !/output/.gitkeep
+
+# Desktop packaging output
+/release/
+/NestingOptimizer.spec
+/.nicegui/
