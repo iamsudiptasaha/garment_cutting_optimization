@@ -13,6 +13,7 @@ def main(argv: list[str] | None = None) -> int:
     commands = parser.add_subparsers(dest="command")
     dev = commands.add_parser("dev", help="Localhost web GUI, reload Python edits")
     dev.add_argument("--port", type=int, default=8080)
+    dev.add_argument("--no-browser", action="store_true", help="Do not launch a browser tab")
     serve = commands.add_parser("serve", help="Run the web GUI (used by desktop host)")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8080)
@@ -35,7 +36,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "dev":
         from garment_nesting.webapp import run_server
 
-        run_server(host="127.0.0.1", port=args.port, reload=True, show=True)
+        run_server(host="127.0.0.1", port=args.port, reload=True, show=not args.no_browser)
         return 0
     if args.command == "serve":
         from garment_nesting.webapp import run_server
@@ -51,6 +52,8 @@ def main(argv: list[str] | None = None) -> int:
     return 2
 
 
-if __name__ == "__main__":
+# NiceGUI hot reload spawns a process which executes this module as __mp_main__.
+# Both parent and child must call ui.run(), or the child refuses to start.
+if __name__ in {"__main__", "__mp_main__"}:
     freeze_support()
     sys.exit(main())
