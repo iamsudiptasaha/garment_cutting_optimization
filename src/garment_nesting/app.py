@@ -2,16 +2,21 @@
 from __future__ import annotations
 
 import argparse
+import errno
+import hashlib
+import json
 import os
 import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 import webbrowser
+from contextlib import contextmanager
 from multiprocessing import freeze_support
 from pathlib import Path
-from threading import current_thread, main_thread
+from threading import Thread, current_thread, main_thread
 from urllib.request import urlopen
 
 
@@ -63,33 +68,179 @@ def _port_available(port: int) -> bool:
     return True
 
 
+def _select_development_port(requested_port: int | None, *, preferred_port: int = 8080) -> tuple[int, bool]:
+    """Auto-select a usable localhost port unless the caller explicitly requested one."""
+    if requested_port is not None:
+        if not _port_available(requested_port):
+            raise ValueError(
+                f"Cannot start localhost GUI on port {requested_port}: occupied or invalid. "
+                f"Check with: lsof -nP -iTCP:{requested_port} -sTCP:LISTEN"
+            )
+        return requested_port, False
+    if _port_available(preferred_port):
+        return preferred_port, False
+    # Ask the OS for an ephemeral port, rather than guessing 8081, 8082, ...
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        return int(probe.getsockname()[1]), True
+
+
+def _dev_lock_path(root: Path) -> Path:
+    """A stable lock for this checkout, not a lock on an individual TCP port."""
+    digest = hashlib.sha256(str(root.resolve()).encode()).hexdigest()[:20]
+    return Path(tempfile.gettempdir()) / f"garment-nesting-dev-{digest}.lock"
+
+
+@contextmanager
+def _dev_instance_lock(root: Path):
+    """Hold a cross-process advisory lock for the lifetime of one dev launcher.
+
+    The OS releases this lock even on SIGKILL. Keep the file itself in place
+    between runs; unlinking a locked file could allow competing lock inodes.
+    """
+    with _dev_lock_path(root).open("a+", encoding="utf-8") as state:
+        if os.name == "nt":
+            import msvcrt
+
+            state.seek(0, os.SEEK_END)
+            if state.tell() == 0:
+                state.write(" ")
+                state.flush()
+            state.seek(0)
+            try:
+                msvcrt.locking(state.fileno(), msvcrt.LK_NBLCK, 1)
+            except OSError as exc:
+                if exc.errno not in (errno.EACCES, errno.EAGAIN):
+                    raise
+                yield None, _read_dev_state(state)
+                return
+            try:
+                yield state, None
+            finally:
+                state.seek(0)
+                msvcrt.locking(state.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            try:
+                fcntl.flock(state.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError as exc:
+                if exc.errno not in (errno.EACCES, errno.EAGAIN):
+                    raise
+                yield None, _read_dev_state(state)
+                return
+            try:
+                yield state, None
+            finally:
+                fcntl.flock(state.fileno(), fcntl.LOCK_UN)
+
+
+def _read_dev_state(state) -> dict:
+    state.seek(0)
+    try:
+        data = json.loads(state.read())
+    except (ValueError, TypeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _write_dev_state(state, port: int) -> None:
+    state.seek(0)
+    state.truncate()
+    state.write(json.dumps({"port": port, "launcher_pid": os.getpid()}))
+    state.flush()
+
+
+def _reuse_existing_dev(state: dict, *, show: bool) -> int:
+    """A second invocation reuses the current browser URL; never spawns a child."""
+    port = state.get("port")
+    if not isinstance(port, int) or not 1 <= port <= 65535:
+        print("Development launcher already starting; no additional server opened.")
+        return 0
+    url = f"http://127.0.0.1:{port}"
+    print(f"Development server already running or starting at {url}; reusing it.")
+    if show:
+        try:
+            with urlopen(f"{url}/health", timeout=0.5) as response:
+                if response.status == 200 and b'"application":"garment-nesting"' in response.read():
+                    webbrowser.open(url)
+        except OSError:
+            print("Existing server is starting; open the URL when ready.")
+    return 0
+
+
+def _watch_parent_pipe(read_fd: int) -> None:
+    """Stop an orphan server if its supervising dev process disappears.
+
+    The parent holds the write side of the pipe open. A forced parent kill
+    closes that descriptor, delivering EOF even though no signal is sent to
+    this server (which runs in a separate process group).
+    """
+    try:
+        while os.read(read_fd, 1):
+            pass
+    except OSError:
+        pass
+    finally:
+        os.close(read_fd)
+    os._exit(0)
+
+
+def _spawn_development_child(command: list[str]) -> tuple[subprocess.Popen, int | None]:
+    """Use a POSIX pipe watchdog so SIGKILL of the parent cannot orphan the server."""
+    if os.name != "posix":
+        return subprocess.Popen(command), None
+    read_fd, write_fd = os.pipe()
+    try:
+        child = subprocess.Popen(
+            [*command, "--parent-watch-fd", str(read_fd)],
+            pass_fds=(read_fd,),
+            start_new_session=True,
+        )
+    except BaseException:
+        os.close(write_fd)
+        raise
+    finally:
+        os.close(read_fd)
+    return child, write_fd
+
+
 def _exit_on_signal(_signum, _frame) -> None:
     """Let finally terminate the child on SIGTERM or terminal hang-up."""
     raise KeyboardInterrupt
 
 
 
-def run_development_server(port: int, *, show: bool = True) -> int:
-    """Hot-reload by supervising the reliable reload=False server mode.
-
-    NiceGUI's own reload process cannot reliably re-execute a Python -m
-    module entrypoint. A small parent watcher restarts the server subprocess
-    when our application's Python code changes.
-    """
-    if not _port_available(port):
-        print(
-            f"Cannot start localhost GUI on port {port}: port is occupied "
-            f"or invalid. Check with: lsof -nP -iTCP:{port} -sTCP:LISTEN",
-            file=sys.stderr,
-        )
-        return 2
+def run_development_server(port: int | None = None, *, show: bool = True) -> int:
+    """Enforce one dev server per checkout, with reuse and orphan protection."""
     root = Path(__file__).resolve().parent
+    with _dev_instance_lock(root) as (owner, existing):
+        if owner is None:
+            return _reuse_existing_dev(existing, show=show)
+        try:
+            selected_port, used_fallback = _select_development_port(port)
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        _write_dev_state(owner, selected_port)
+        if used_fallback:
+            print(
+                f"Port 8080 occupied; using port {selected_port} "
+                "for this single development instance.",
+                flush=True,
+            )
+        return _run_owned_dev_server(selected_port, show=show, root=root)
+
+
+def _run_owned_dev_server(port: int, *, show: bool, root: Path) -> int:
+    """Watch Python files and supervise exactly one NiceGUI child."""
     command = [
         sys.executable, "-m", "garment_nesting.app",
         "serve", "--host", "127.0.0.1", "--port", str(port),
     ]
     seen = _snapshot(root)
     process: subprocess.Popen | None = None
+    parent_pipe: int | None = None
     browser_opened = not show
     previous_handlers = {}
     if current_thread() is main_thread():
@@ -100,8 +251,11 @@ def run_development_server(port: int, *, show: bool = True) -> int:
     try:
         while True:
             if process is None:
-                process = subprocess.Popen(command, start_new_session=os.name == "posix")
-                print(f"Local GUI: http://127.0.0.1:{port}", flush=True)
+                process, parent_pipe = _spawn_development_child(command)
+                print(
+                    f"Local GUI: http://127.0.0.1:{port} (server PID {process.pid})",
+                    flush=True,
+                )
             if process.poll() is not None:
                 print(f"Local GUI stopped (exit {process.returncode})", file=sys.stderr)
                 return process.returncode or 1
@@ -118,6 +272,9 @@ def run_development_server(port: int, *, show: bool = True) -> int:
             if updated != seen:
                 print("Python source changed; restarting local GUI", flush=True)
                 _stop_process(process)
+                if parent_pipe is not None:
+                    os.close(parent_pipe)
+                    parent_pipe = None
                 process = None
                 seen = updated
     except KeyboardInterrupt:
@@ -125,6 +282,8 @@ def run_development_server(port: int, *, show: bool = True) -> int:
     finally:
         if process is not None:
             _stop_process(process)
+        if parent_pipe is not None:
+            os.close(parent_pipe)
         for signum, handler in previous_handlers.items():
             signal.signal(signum, handler)
 
@@ -133,11 +292,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Garment Nesting LAN application")
     commands = parser.add_subparsers(dest="command")
     dev = commands.add_parser("dev", help="Localhost web GUI, reload Python edits")
-    dev.add_argument("--port", type=int, default=8080)
+    dev.add_argument(
+        "--port", type=int, default=None,
+        help="Use this exact port (default: 8080, or an automatic free port if occupied)",
+    )
     dev.add_argument("--no-browser", action="store_true", help="Do not launch a browser tab")
     serve = commands.add_parser("serve", help="Run the web GUI (used by desktop host)")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8080)
+    serve.add_argument("--parent-watch-fd", type=int, default=None, help=argparse.SUPPRESS)
     commands.add_parser("smoke", help="Verify bundled GUI and native dependencies")
     args = parser.parse_args(argv)
 
@@ -157,6 +320,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "dev":
         return run_development_server(args.port, show=not args.no_browser)
     if args.command == "serve":
+        if args.parent_watch_fd is not None:
+            Thread(target=_watch_parent_pipe, args=(args.parent_watch_fd,), daemon=True).start()
         from garment_nesting.webapp import run_server
 
         run_server(host=args.host, port=args.port, reload=False, show=False)

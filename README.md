@@ -19,7 +19,10 @@ python -m pip install -e ".[dev,geometry,solver,output,app]"
 python -m garment_nesting.app dev
 ~~~
 
-Open http://127.0.0.1:8080. Python edits reload the local GUI.
+Open the localhost URL printed by the launcher. It prefers port 8080 but\nautomatically chooses a free port when 8080 is occupied. A per-checkout
+lock prevents multiple concurrent development servers: subsequent `dev`
+commands reuse the existing server URL instead of opening more ports.
+Python edits reload the local GUI.
 After a code update use `git pull origin main` and restart the command.
 The default packaged application opens a small **Start Server / Stop Server**
 desktop window; pressing Start exposes the browser GUI to the trusted LAN.

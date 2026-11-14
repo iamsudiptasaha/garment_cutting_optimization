@@ -13,13 +13,35 @@ The development command supervises a separate reload-disabled NiceGUI
 server. It restarts the server when application Python files change, avoiding
 NiceGUI's multiprocessing reload issue with `python -m`.
 
-Open http://127.0.0.1:8080. Stop with Ctrl-C. The watcher also stops the
-child server on termination (SIGTERM) or terminal hang-up (SIGHUP).
-If port 8080 is already in use, it explains the conflict instead of creating
-another orphaned process. On macOS, identify an old listener with:
+The default `dev` command prefers http://127.0.0.1:8080. If another
+application (including a previous orphan server) occupies that port, it
+**automatically selects a free localhost port** and prints the actual URL.
+It does **not** terminate unknown processes. The browser opens the selected
+URL, so use that URL instead of assuming 8080. The dev launcher holds a
+per-checkout operating-system lock for its entire lifetime. **Running dev
+again reuses the already-running URL and launches no additional server or
+port**, even if the second command requests a different port. The first
+instance owns the selected port until stopped. Run `dev --port 8080` only
+when you specifically require port 8080 for the initial instance; explicit
+ports error if occupied.
+
+The lock releases automatically after normal exit, crash or SIGKILL.
+A stale lock file alone cannot prevent startup; the OS lock is authoritative.
+Only one new development server per checkout is permitted. This is separate
+from the one-click production LAN host and does not clean up old servers
+orphaned before this version.
+
+Stop with Ctrl-C. The launcher stops the server on termination (SIGTERM)
+or terminal hang-up (SIGHUP). On macOS/Linux the launched server also
+monitors a private parent-liveness pipe and exits automatically if the
+launcher is force-killed (SIGKILL) or crashes, preventing a retained port
+from an orphaned **new** dev server. This cannot retroactively stop old
+orphan processes started before the fix. If you still want to free 8080
+from a pre-fix server on macOS, identify it before stopping it:
 
 ~~~bash
 lsof -nP -iTCP:8080 -sTCP:LISTEN
+ps -p <PID> -o pid,ppid,command
 ~~~
 
 After merging changes, run `git pull origin main` and restart
