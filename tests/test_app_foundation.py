@@ -301,3 +301,90 @@ def test_dev_child_releases_port_after_parent_sigkill(tmp_path):
                 os.killpg(child_pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
+
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX concurrency integration test")
+def test_two_dev_invocations_reuse_one_server_and_one_port(tmp_path):
+    """A second dev command must not open another listener or block forever."""
+    from garment_nesting.app import _port_available
+
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        first_port = probe.getsockname()[1]
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        second_port = probe.getsockname()[1]
+    if first_port == second_port:
+        pytest.skip("OS happened to select the same ephemeral port twice")
+
+    env = os.environ.copy()
+    for key in tuple(env):
+        if key.startswith("NICEGUI_SCREEN_TEST") or key == "PYTEST_CURRENT_TEST":
+            env.pop(key)
+
+    log_path = tmp_path / "single-instance.log"
+    with log_path.open("w", encoding="utf-8") as log:
+        first = subprocess.Popen(
+            [
+                sys.executable, "-m", "garment_nesting.app", "dev",
+                "--port", str(first_port), "--no-browser",
+            ],
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+            env=env,
+        )
+    try:
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            assert first.poll() is None, log_path.read_text()
+            try:
+                with urlopen(
+                    f"http://127.0.0.1:{first_port}/health", timeout=0.5,
+                ) as response:
+                    if response.status == 200:
+                        break
+            except OSError:
+                time.sleep(0.2)
+        else:
+            pytest.fail("First dev launcher never became healthy")
+
+        second = subprocess.run(
+            [
+                sys.executable, "-m", "garment_nesting.app", "dev",
+                "--port", str(second_port), "--no-browser",
+            ],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=8,
+            check=False,
+        )
+        assert second.returncode == 0
+        assert "reusing" in second.stdout
+        assert f":{first_port}" in second.stdout
+        assert _port_available(second_port)
+        assert first.poll() is None
+    finally:
+        try:
+            os.killpg(first.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        first.wait(timeout=7)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX advisory lock")
+def test_singleton_lock_is_reclaimable_after_owner_exits(tmp_path):
+    from garment_nesting.app import _dev_instance_lock, _write_dev_state
+
+    with _dev_instance_lock(tmp_path) as (owner, existing):
+        assert owner is not None
+        assert existing is None
+        _write_dev_state(owner, 8097)
+        with _dev_instance_lock(tmp_path) as (contender, status):
+            assert contender is None
+            assert status["port"] == 8097
+    with _dev_instance_lock(tmp_path) as (owner, existing):
+        assert owner is not None
+        assert existing is None  # stale JSON is irrelevant without held OS lock
