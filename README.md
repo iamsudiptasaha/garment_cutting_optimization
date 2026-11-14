@@ -23,8 +23,12 @@ Open http://127.0.0.1:8080. Python edits reload the local GUI.
 After a code update use `git pull origin main` and restart the command.
 The default packaged application opens a small **Start Server / Stop Server**
 desktop window; pressing Start exposes the browser GUI to the trusted LAN.
-This first-stage GUI inventories and validates multiple SVG uploads.
-Algorithm selection, editable multipliers and final export are upcoming stages.
+The GUI inventories and validates multiple SVG uploads and provides editable
+per-pattern inclusion, copies (1–10,000), and allowed rotations (0°, 180°,
+or both), with live piece totals. Invalid geometry cannot be included.
+These settings currently live in the browser session, not in the existing
+PackingSolver CLI. Algorithm selection, persistent job storage, model
+comparison and selected-result export are upcoming stages.
 
 Each push to `main` automatically builds a zipped Windows x64 app and
 macOS Apple Silicon/Intel apps as GitHub Actions artifacts.

@@ -52,13 +52,20 @@ distribution, login, and access control are later production-hardening work.
 
 ## Scope of the current UI foundation
 
-The browser provides multi-file SVG intake and geometry inspection by
-calling the existing input and geometry layers, without changing the SVG.
-This is an early workspace, not the completed nesting experiment GUI:
-multipliers, included-piece switches, per-piece rotations, plugin
-algorithms, comparison and selected-result export are still pending.
-The uploads are transient, and the quantity/rotation columns are currently
-non-editable placeholders. Do not assume inventory equals saved job state.
+The browser accepts multiple SVG files and validates each cutting group
+through the existing input and geometry layer without changing the source.
+Every row now has editable quantity (1–10,000), inclusion checkbox and
+allowed rotation (0°, 180°, or both). Invalid rows are disabled and excluded;
+the summary shows actual included patterns and total multiplied pieces.
+The UI has Include all valid and Exclude all convenience controls.
+
+These controls update a **per-browser-session** configuration only. Multiple
+uploads with the same SVG filename or group IDs have distinct internal IDs.
+Uploaded original files and selection settings are **not saved** across
+restarts, and they do not yet affect the PackingSolver CLI adapter.
+The pure `selected_job_rows` function provides a validated source-qualified
+configuration for the future plugin-based experiment runner. Solver plugins,
+comparison and selected-result export are still pending.
 
 ## Security
 
