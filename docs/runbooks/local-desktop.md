@@ -17,9 +17,19 @@ The default `dev` command prefers http://127.0.0.1:8080. If another
 application (including a previous orphan server) occupies that port, it
 **automatically selects a free localhost port** and prints the actual URL.
 It does **not** terminate unknown processes. The browser opens the selected
-URL, so use that URL instead of assuming 8080. Run `dev --port 8080` only
-when you specifically require port 8080; explicitly requested ports remain
-strict and error if occupied.
+URL, so use that URL instead of assuming 8080. The dev launcher holds a
+per-checkout operating-system lock for its entire lifetime. **Running dev
+again reuses the already-running URL and launches no additional server or
+port**, even if the second command requests a different port. The first
+instance owns the selected port until stopped. Run `dev --port 8080` only
+when you specifically require port 8080 for the initial instance; explicit
+ports error if occupied.
+
+The lock releases automatically after normal exit, crash or SIGKILL.
+A stale lock file alone cannot prevent startup; the OS lock is authoritative.
+Only one new development server per checkout is permitted. This is separate
+from the one-click production LAN host and does not clean up old servers
+orphaned before this version.
 
 Stop with Ctrl-C. The launcher stops the server on termination (SIGTERM)
 or terminal hang-up (SIGHUP). On macOS/Linux the launched server also
