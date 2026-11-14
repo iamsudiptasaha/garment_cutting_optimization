@@ -9,9 +9,9 @@ import subprocess
 import sys
 import time
 import webbrowser
-from threading import current_thread, main_thread
 from multiprocessing import freeze_support
 from pathlib import Path
+from threading import current_thread, main_thread
 from urllib.request import urlopen
 
 
@@ -76,7 +76,7 @@ def run_development_server(port: int, *, show: bool = True) -> int:
     if not _port_available(port):
         print(
             f"Cannot start localhost GUI on port {port}: port is occupied "
-            "or invalid. Check with: lsof -nP -iTCP:%s -sTCP:LISTEN" % port,
+            f"or invalid. Check with: lsof -nP -iTCP:{port} -sTCP:LISTEN",
             file=sys.stderr,
         )
         return 2
