@@ -119,7 +119,24 @@ def test_dev_module_starts_with_hot_reload_enabled(tmp_path):
         except subprocess.TimeoutExpired:
             os.killpg(process.pid, signal.SIGKILL)
             process.wait(timeout=5)
+        # Terminating just the watcher must also release the child listener.
+        from garment_nesting.app import _port_available
 
+        deadline = time.monotonic() + 6
+        while time.monotonic() < deadline and not _port_available(port):
+            time.sleep(0.2)
+        assert _port_available(port), "Dev server child retained port after shutdown"
+
+
+def test_dev_mode_rejects_an_occupied_port(capsys):
+    from garment_nesting.app import run_development_server
+
+    with socket.socket() as occupied:
+        occupied.bind(("127.0.0.1", 0))
+        port = occupied.getsockname()[1]
+        occupied.listen(1)
+        assert run_development_server(port, show=False) == 2
+        assert str(port) in capsys.readouterr().err
 
 
 def test_dev_watcher_detects_python_file_changes(tmp_path):
