@@ -270,7 +270,7 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
                     row_key="id",
                     pagination={"rowsPerPage": 25},
                 ).classes("w-full nesting-inventory").props(
-                    'rows-per-page-options="[10,25,50,0]"'
+                    ':rows-per-page-options="[10,25,50,0]"'
                 )
                 # Do not hide the table. Quasar may not reveal a hidden table
                 # on the first upload; an empty table still shows its columns.
