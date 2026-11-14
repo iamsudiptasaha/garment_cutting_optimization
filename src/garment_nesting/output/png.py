@@ -54,9 +54,17 @@ def _render(source: Path, width_px: int, height_px: int) -> bytes:
             url=str(source), output_width=width_px,
             output_height=height_px, background_color="white",
         )
+    # resvg rejects some valid SVG physical dimensions ("in"). For raster
+    # conversion only, normalize canvas sizes to CSS pixels; keep the original
+    # vector SVG and its inch-based fabric measurements unchanged.
+    root = ET.parse(source).getroot()
+    width_in = _inches(root.get("width"))
+    height_in = _inches(root.get("height"))
+    root.set("width", f"{width_in * 96:g}px")
+    root.set("height", f"{height_in * 96:g}px")
     return resvg_py.svg_to_bytes(
-        svg_path=str(source.resolve()), width=width_px, height=height_px,
-        background="#ffffff",
+        svg_string=ET.tostring(root, encoding="unicode"),
+        width=width_px, height=height_px, background="#ffffff",
     )
 
 
