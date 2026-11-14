@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from uuid import uuid4
@@ -17,7 +18,15 @@ from garment_nesting.job_selection import (
     selection_summary,
 )
 
-UI_REVISION = "pattern-editor-2026-11-15-v3"
+def _source_revision() -> str:
+    """Fingerprint loaded source code so old servers cannot masquerade as updated UI."""
+    try:
+        return sha256(Path(__file__).read_bytes()).hexdigest()[:12]
+    except OSError:
+        return "bundled"
+
+
+UI_REVISION = _source_revision()
 
 
 def inspect_upload(name: str, data: bytes) -> list[dict]:
