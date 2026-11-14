@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
+from tempfile import TemporaryDirectory
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -17,17 +19,23 @@ def check(target: str) -> None:
         raise ValueError(f"Unknown target: {target}")
     if not executable.is_file():
         raise FileNotFoundError(executable)
-    result = subprocess.run(
-        [str(executable), "smoke"],
-        cwd=ROOT, capture_output=True, text=True, timeout=90,
-    )
-    print(result.stdout)
-    if result.stderr:
-        print(result.stderr)
-    if result.returncode:
-        raise RuntimeError(f"Frozen application smoke test failed ({result.returncode})")
-    if "NestingOptimizer bundled dependencies OK" not in result.stdout:
-        raise RuntimeError("Frozen app did not acknowledge its dependencies")
+    with TemporaryDirectory(prefix="nesting-smoke-") as directory:
+        marker = Path(directory) / "success.txt"
+        env = os.environ.copy()
+        env["NESTING_SMOKE_FILE"] = str(marker)
+        result = subprocess.run(
+            [str(executable), "smoke"],
+            cwd=ROOT, capture_output=True, text=True, timeout=90, env=env,
+        )
+        print(result.stdout)
+        if result.stderr:
+            print(result.stderr)
+        if result.returncode:
+            raise RuntimeError(
+                f"Frozen application smoke test failed ({result.returncode})"
+            )
+        if not marker.exists() or "bundled dependencies OK" not in marker.read_text():
+            raise RuntimeError("Frozen app did not load the GUI and solver libraries")
 
 
 def main() -> None:

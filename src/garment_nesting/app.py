@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
+from pathlib import Path
 from multiprocessing import freeze_support
 
 
@@ -24,7 +26,11 @@ def main(argv: list[str] | None = None) -> int:
 
         from garment_nesting.input.svg import inspect_svg  # noqa: F401
 
-        print("NestingOptimizer bundled dependencies OK")
+        marker = os.environ.get("NESTING_SMOKE_FILE")
+        if marker:
+            Path(marker).write_text("NestingOptimizer bundled dependencies OK\n", encoding="utf-8")
+        else:
+            print("NestingOptimizer bundled dependencies OK")
         return 0
     if args.command == "dev":
         from garment_nesting.webapp import run_server
