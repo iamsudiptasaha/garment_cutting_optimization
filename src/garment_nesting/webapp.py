@@ -17,6 +17,8 @@ from garment_nesting.job_selection import (
     selection_summary,
 )
 
+UI_REVISION = "pattern-editor-2026-11-15-v3"
+
 
 def inspect_upload(name: str, data: bytes) -> list[dict]:
     """Inventory and validate a file without trusting or persisting its filename."""
@@ -85,7 +87,7 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
 
     @app.get("/health")
     def health() -> dict[str, str]:
-        return {"application": "garment-nesting", "status": "ok"}
+        return {"application": "garment-nesting", "status": "ok", "ui_revision": UI_REVISION}
 
     @ui.page("/")
     def home() -> None:
@@ -94,7 +96,7 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
         ui.colors(primary="#17657b")
         ui.add_head_html("""
             <style>
-              .nesting-input .q-field__label { font-size: 1rem; }
+              .nesting-input .q-field__native { font-size: 1.125rem; }
               .nesting-inventory .q-table thead th {
                 font-size: 1rem; font-weight: 700;
               }
@@ -104,9 +106,13 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
         """)
         with ui.column().classes("w-full max-w-7xl mx-auto p-5 gap-5"):
             ui.label("Garment Nesting Optimizer").classes("text-4xl font-bold")
-            ui.label("Local workspace · Input / Processor / Output").classes(
-                "text-base text-gray-600"
-            )
+            with ui.row().classes("items-center justify-between w-full gap-2"):
+                ui.label("Local workspace · Input / Processor / Output").classes(
+                    "text-base text-gray-600"
+                )
+                ui.label(f"UI version: {UI_REVISION}").classes(
+                    "text-sm font-medium text-gray-600"
+                )
             with ui.row().classes("w-full gap-3"):
                 for title, description in (
                     ("1 · Input", "Import and validate SVG patterns"),
@@ -163,15 +169,21 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
                     ("max_length_in", "Max length (in; blank = open)", 0.1),
                     ("time_limit_seconds", "Solver time budget (s)", 1),
                 ]
-                with ui.grid(columns=4).classes("w-full gap-3"):
+                with ui.grid(columns=4).classes("w-full gap-4"):
                     for field, title, step in settings_fields:
-                        ui.number(
-                            title,
-                            value=fabric_settings[field],
-                            min=0,
-                            step=step,
-                            on_change=lambda e, field=field: change_fabric(e, field),
-                        ).props("outlined").classes("w-full nesting-input")
+                        with ui.column().classes("w-full gap-1"):
+                            ui.label(title).classes(
+                                "text-lg font-semibold leading-normal"
+                            )
+                            ui.number(
+                                value=fabric_settings[field],
+                                min=0,
+                                step=step,
+                                on_change=lambda e, field=field: change_fabric(e, field),
+                            ).props(
+                                f'outlined input-style="font-size: 18px" '
+                                f'aria-label="{title}"'
+                            ).classes("w-full nesting-input")
                 update_dimensions()
             with ui.card().classes("w-full gap-4"):
                 ui.label("Pattern inventory").classes("text-2xl font-bold")
