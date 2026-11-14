@@ -69,6 +69,12 @@ def test_dev_module_starts_with_hot_reload_enabled(tmp_path):
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]
     log_path = tmp_path / "dev-server.log"
+    # NiceGUI's pytest plugin flags the test process as a screen-test server.
+    # A manually spawned production-style subprocess must not inherit that mode.
+    env = os.environ.copy()
+    for key in tuple(env):
+        if key.startswith("NICEGUI_SCREEN_TEST"):
+            env.pop(key)
     with log_path.open("w", encoding="utf-8") as logfile:
         process = subprocess.Popen(
             [
@@ -78,6 +84,7 @@ def test_dev_module_starts_with_hot_reload_enabled(tmp_path):
             stdout=logfile,
             stderr=subprocess.STDOUT,
             start_new_session=True,
+            env=env,
         )
     try:
         deadline = time.monotonic() + 30
