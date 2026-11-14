@@ -94,7 +94,8 @@ Outputs are `trial.instance.json` (solver input), `trial.manifest.json`
 `trial.report.json` (validated lengths, wastage and placements),
 `trial.nested.svg` (editable annotated vector layout),
 `trial.nested.png` (one lossless long image) and
-`trial.nested.jpg` (one JPEG for phone sharing). The height in the solver input is a generous internal
+`trial.nested.jpg` (one JPEG for phone sharing) and
+`trial.nested.html` (one offline zoomable vector viewer). The height in the solver input is a generous internal
 search ceiling, not a requested fabric length. Fabric length consumed is
 `max(piece_end_y) - min(piece_start_y)`, in inches, independent of any blank
 space before the layout. Wastage is `(fabric_width_in * length_consumed_in -
@@ -112,7 +113,8 @@ garment-nesting prepare "samples/FC_HH_Full_Pyjama.svg" \
 ```
 
 The `nest` command now exports `output/nesting.nested.svg`,
-`output/nesting.nested.png` and `output/nesting.nested.jpg` alongside JSON. It **does not**
+`output/nesting.nested.png`, `output/nesting.nested.jpg` and
+`output/nesting.nested.html` alongside JSON. It **does not**
 redraw original shapes as polygons: the source Bézier paths and grouped
 text are retained, with placement transforms applied to each group.
 
@@ -140,12 +142,16 @@ the precisely measured fabric rectangle: use `fabric-boundary` as the fabric
 measurement, rather than the larger annotated page size.
 
 The PNG and JPEG show the **same single continuous strip**, never separate
-pages. Both render at **3000 pixels wide by default** (`--preview-width-px`
-can be set to 3600, 4000 or another value). Text/lines are vector rendered
-at the target resolution; JPEG uses quality 92 with no chroma subsampling.
+pages. Both render at **5000 pixels wide by default** (`--preview-width-px`
+can be set to 6000 or another value, subject to memory limits). Text/lines are vector rendered
+at the target resolution; JPEG uses quality 95 with no chroma subsampling.
 The image is for viewing and sharing, not physical-scale cutting.
 For extremely long layouts, an explicit error is returned if one high-quality
 image would exceed the image-size limit; there is no silent quality reduction.
+A larger file in MB does not guarantee legibility: messaging apps may shrink
+long images before showing them. For reliable close inspection, open the one
+`nested.html` file in a browser and press **+** to zoom; it retains every SVG
+curve and label, scrolls as one continuous strip and works offline.
 To avoid WhatsApp recompressing the operator JPEG, share it as a document.
 
 To rerender a saved solution without running the solver again:
@@ -154,7 +160,7 @@ To rerender a saved solution without running the solver again:
 python -m garment_nesting.cli render "samples/FC_HH_Full_Pyjama.svg" \
   --manifest output/nesting.manifest.json \
   --report output/nesting.report.json \
-  --preview-width-px 3000
+  --preview-width-px 5000
 ```
 
 On macOS, CairoSVG requires Homebrew's Cairo library. If the command-line

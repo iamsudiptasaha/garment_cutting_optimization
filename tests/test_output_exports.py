@@ -89,10 +89,10 @@ def test_png_is_one_continuous_shareable_image(simple_layout, tmp_path):
     png, jpg = export_rasters(
         svg, tmp_path / "nested.png", tmp_path / "nested.jpg",
     )
-    assert _png_dimensions(png) == (3000, 1365)
+    assert _png_dimensions(png) == (5000, 2276)
     with Image.open(jpg) as preview:
         assert preview.format == "JPEG"
-        assert preview.size == (3000, 1365)
+        assert preview.size == (5000, 2276)
     assert png.stat().st_size > 500
     assert jpg.stat().st_size > 500
 
@@ -147,6 +147,7 @@ def test_render_cli_does_not_reoptimize(simple_layout, tmp_path):
     assert (tmp_path / "output" / "trial.nested.svg").exists()
     assert (tmp_path / "output" / "trial.nested.png").exists()
     assert (tmp_path / "output" / "trial.nested.jpg").exists()
+    assert (tmp_path / "output" / "trial.nested.html").exists()
 
 
 def test_reference_44_original_outlines_survive_export(tmp_path):
@@ -197,3 +198,40 @@ def test_oversize_preview_fails_before_creating_files(tmp_path):
         export_rasters(svg, tmp_path / "strip.png", tmp_path / "strip.jpg")
     assert not (tmp_path / "strip.png").exists()
     assert not (tmp_path / "strip.jpg").exists()
+
+
+
+def test_viewer_embeds_exact_vector_and_keeps_single_continuous_layout(simple_layout, tmp_path):
+    from base64 import b64decode
+    from re import search
+
+    from garment_nesting.output.viewer import export_viewer
+
+    original, manifest, report = simple_layout
+    svg = export_svg(original, manifest, report, tmp_path / "full.svg")
+    html = export_viewer(svg, tmp_path / "full.html")
+    body = html.read_text(encoding="utf-8")
+    encoded = search(r"data:image/svg\+xml;base64,([A-Za-z0-9+/=]+)", body)
+    assert encoded is not None
+    assert b64decode(encoded.group(1)) == svg.read_bytes()
+    assert 'id="plus"' in body
+    assert 'id="minus"' in body
+    assert 'id="fit"' in body
+    assert "No internet required." in body
+    assert "http://" not in body
+    assert "https://" not in body
+
+
+def test_raster_default_width_is_larger_and_no_automatic_downsampling(tmp_path):
+    from garment_nesting.output.png import export_rasters
+
+    svg = tmp_path / "full.svg"
+    svg.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="10in" '
+        'height="10in" viewBox="0 0 10 10"/>',
+        encoding="utf-8",
+    )
+    png, jpg = export_rasters(svg, tmp_path / "long.png", tmp_path / "long.jpg")
+    assert _png_dimensions(png) == (5000, 5000)
+    with Image.open(jpg) as raster:
+        assert raster.size == (5000, 5000)

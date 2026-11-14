@@ -62,8 +62,8 @@ def main(argv: list[str] | None = None) -> int:
 
     for cmd in (nest, evaluate, render):
         cmd.add_argument(
-            "--preview-width-px", type=int, default=3000,
-            help="Continuous preview width in pixels; default 3000",
+            "--preview-width-px", type=int, default=5000,
+            help="Continuous preview width in pixels; default 5000",
         )
         cmd.add_argument(
             "--preview-ppi", type=float, default=None,
@@ -97,11 +97,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "render":
             manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
             report = json.loads(Path(args.report).read_text(encoding="utf-8"))
-            svg, png, jpg = export_layouts(
+            svg, png, jpg, viewer = export_layouts(
                 args.svg, manifest, report, args.output_prefix,
                 preview_width_px=args.preview_width_px, preview_ppi=args.preview_ppi,
             )
-            print(f"SVG: {svg}\nPNG: {png}\nJPEG: {jpg}")
+            print(f"SVG: {svg}\nPNG: {png}\nJPEG: {jpg}\nZoomable: {viewer}")
             return 0
 
         if args.command == "evaluate":
@@ -113,11 +113,11 @@ def main(argv: list[str] | None = None) -> int:
             if report["status"] != "FEASIBLE":
                 return 2
             if args.svg:
-                svg, png, jpg = export_layouts(
+                svg, png, jpg, viewer = export_layouts(
                     args.svg, manifest, report, args.output_prefix,
                     preview_width_px=args.preview_width_px, preview_ppi=args.preview_ppi,
                 )
-                print(f"SVG: {svg}\nPNG: {png}\nJPEG: {jpg}")
+                print(f"SVG: {svg}\nPNG: {png}\nJPEG: {jpg}\nZoomable: {viewer}")
             return 0
 
         instance, manifest = prepare_instance(
@@ -141,7 +141,7 @@ def main(argv: list[str] | None = None) -> int:
         from garment_nesting.processor.run import solve_instance
 
         certificate_path = f"{prefix}.solution.json"
-        for suffix in (".nested.svg", ".nested.png", ".nested.jpg"):
+        for suffix in (".nested.svg", ".nested.png", ".nested.jpg", ".nested.html"):
             Path(f"{prefix}{suffix}").unlink(missing_ok=True)
         if args.time_limit <= 0:
             parser.error("--time-limit must be positive")
@@ -158,11 +158,11 @@ def main(argv: list[str] | None = None) -> int:
         _summary(report)
         if report["status"] != "FEASIBLE":
             return 2
-        svg, png, jpg = export_layouts(
+        svg, png, jpg, viewer = export_layouts(
             args.svg, manifest, report, prefix,
             preview_width_px=args.preview_width_px, preview_ppi=args.preview_ppi,
         )
-        print(f"SVG: {svg}\nPNG: {png}\nJPEG: {jpg}")
+        print(f"SVG: {svg}\nPNG: {png}\nJPEG: {jpg}\nZoomable: {viewer}")
         return 0
 
     parser.print_help()

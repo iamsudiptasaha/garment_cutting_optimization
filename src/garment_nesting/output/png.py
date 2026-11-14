@@ -8,9 +8,9 @@ from xml.etree import ElementTree as ET
 
 # A long roll can be many inches. These explicit limits prevent an
 # unbounded allocation and avoid silently shrinking the preview.
-MAX_EDGE_PX = 48_000
-MAX_PIXELS = 140_000_000
-DEFAULT_WIDTH_PX = 3000
+MAX_EDGE_PX = 60_000
+MAX_PIXELS = 200_000_000
+DEFAULT_WIDTH_PX = 5000
 
 
 def _inches(raw: str | None) -> float:
@@ -65,11 +65,11 @@ def export_rasters(
     *,
     preview_width_px: int = DEFAULT_WIDTH_PX,
     preview_ppi: float | None = None,
-    jpeg_quality: int = 92,
+    jpeg_quality: int = 95,
 ) -> tuple[Path, Path]:
     """Export ONE long PNG and ONE long JPEG, preserving the full aspect ratio.
 
-    PNG is lossless. JPEG uses 4:4:4 subsampling for clean text and fine lines.
+    PNG is lossless. JPEG uses quality 95 and 4:4:4 subsampling for clean text and fine lines.
     Neither is a 1:1 cutting master; use the editable SVG for geometry.
     """
     if not 1 <= jpeg_quality <= 95:
