@@ -18,9 +18,7 @@ QUANTITY_PATTERN = re.compile(r"[0-9]+")
 
 def quantity_from_input(value: object) -> int:
     """Parse only whole positive quantities (never silently round decimals)."""
-    if isinstance(value, bool):
-        raise ValueError("Quantity must be a whole number from 1 to 10,000")
-    if isinstance(value, int):
+    if isinstance(value, int) and not isinstance(value, bool):
         quantity = value
     elif isinstance(value, float) and value.is_integer():
         quantity = int(value)
@@ -57,9 +55,8 @@ def edit_pattern(rows: list[dict], row_id: str, field: str, value: object) -> di
             raise ValueError("Invalid cutting geometry cannot be included")
     elif field == "qty":
         value = quantity_from_input(value)
-    elif field == "rotation":
-        if not isinstance(value, str) or value not in ROTATION_ANGLES:
-            raise ValueError("Only 0° and 180° rotations are supported")
+    elif field == "rotation" and (not isinstance(value, str) or value not in ROTATION_ANGLES):
+        raise ValueError("Only 0° and 180° rotations are supported")
     row[field] = value
     return row
 
