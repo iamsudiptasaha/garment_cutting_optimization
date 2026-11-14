@@ -62,10 +62,26 @@ distribution, login, and access control are later production-hardening work.
 
 The browser accepts multiple SVG files and validates each cutting group
 through the existing input and geometry layer without changing the source.
-Every row now has editable quantity (1–10,000), inclusion checkbox and
-allowed rotation (0°, 180°, or both). Invalid rows are disabled and excluded;
-the summary shows actual included patterns and total multiplied pieces.
+Every row now has editable quantity (0–10,000), an inclusion checkbox,
+allowed rotation (0°, 180°, or both), and extra piece margin in inches (0–12).
+A zero quantity is valid and excludes that pattern from the job even if its
+Include checkbox remains checked. The saved checkbox choice and margin remain
+untouched, so increasing the quantity reactivates the pattern. Invalid rows
+cannot be included; the summary counts only positive included quantities.
 The UI has Include all valid and Exclude all convenience controls.
+
+The inventory table starts hidden and becomes visible immediately on upload
+via an explicit fresh table-row update (no additional Include/Exclude click).
+Fabric inputs are available above the inventory: width, left/right selvedge
+reserves, start/end length reserves, global piece gap, optional maximum roll
+length (blank = uncapped), and per-model solver time limit. All spatial inputs
+are in inches. Width must exceed combined left and right reserves; maximum
+length, when specified, must exceed start/end reserves.
+
+The extra per-pattern margin is a uniform **placement keep-out**, not a seam
+allowance, and never alters the cutting outline. Future solver semantics:
+minimum gap between pieces = global gap + margin of piece A + margin of piece B.
+The "Preview job inputs" button shows the validated, normalized job payload.
 
 These controls update a **per-browser-session** configuration only. Multiple
 uploads with the same SVG filename or group IDs have distinct internal IDs.
