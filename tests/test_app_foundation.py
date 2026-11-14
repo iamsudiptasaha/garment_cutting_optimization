@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import signal
 import socket
 import subprocess
@@ -214,3 +215,89 @@ def test_first_svg_upload_reveals_populated_table_without_extra_click():
     assert table.rows[0]["qty"] == 7
     replace_inventory_table_rows(table, [])
     assert table.visible is False
+
+
+
+def test_default_dev_port_auto_falls_back_without_touching_other_listener():
+    """Explicit ports remain strict; unqualified dev start finds an OS-free port."""
+    from garment_nesting.app import _select_development_port
+
+    with socket.socket() as occupied:
+        occupied.bind(("127.0.0.1", 0))
+        occupied.listen()
+        taken = occupied.getsockname()[1]
+        selected, fallback = _select_development_port(None, preferred_port=taken)
+        assert fallback is True
+        assert 1 <= selected <= 65535
+        assert selected != taken
+        # Occupied socket is still bound; we must never terminate unknown listeners.
+        with pytest.raises(ValueError, match="occupied or invalid"):
+            _select_development_port(taken)
+        with socket.socket() as probe:
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            probe.bind(("127.0.0.1", selected))
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX parent pipe watchdog")
+def test_dev_child_releases_port_after_parent_sigkill(tmp_path):
+    """SIGKILL cannot trigger a parent's finally: the child must detect EOF itself."""
+    from garment_nesting.app import _port_available
+
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    log_path = tmp_path / "parent-death.log"
+    env = os.environ.copy()
+    for key in tuple(env):
+        if key.startswith("NICEGUI_SCREEN_TEST") or key == "PYTEST_CURRENT_TEST":
+            env.pop(key)
+    with log_path.open("w", encoding="utf-8") as logfile:
+        parent = subprocess.Popen(
+            [
+                sys.executable, "-m", "garment_nesting.app", "dev",
+                "--port", str(port), "--no-browser",
+            ],
+            stdout=logfile,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+            env=env,
+        )
+    child_pid = None
+    try:
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            if parent.poll() is not None:
+                break
+            try:
+                with urlopen(f"http://127.0.0.1:{port}/health", timeout=0.5) as response:
+                    if response.status == 200:
+                        break
+            except OSError:
+                time.sleep(0.2)
+        else:
+            pytest.fail("Development server never started: " + log_path.read_text()[-3000:])
+
+        logs = log_path.read_text(encoding="utf-8")
+        match = re.search(r"server PID (\d+)", logs)
+        assert match, logs
+        child_pid = int(match.group(1))
+        # Kill only the watcher, not the child process group.
+        os.kill(parent.pid, signal.SIGKILL)
+        parent.wait(timeout=5)
+
+        deadline = time.monotonic() + 8
+        while time.monotonic() < deadline and not _port_available(port):
+            time.sleep(0.2)
+        assert _port_available(port), "Orphan server retained port after parent SIGKILL"
+    finally:
+        if parent.poll() is None:
+            try:
+                os.killpg(parent.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            parent.wait(timeout=5)
+        if child_pid is not None:
+            try:
+                os.killpg(child_pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
