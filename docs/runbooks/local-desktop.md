@@ -54,10 +54,37 @@ python -m garment_nesting.app dev --restart
 ~~~
 
 This sends SIGTERM only to the verified `-m garment_nesting.app dev`
-launcher that holds this checkout's advisory lock, waits for it to exit,
-then starts exactly one replacement server. It does not kill random Python
-processes or allocate additional ports. On Windows, use Ctrl-C in the old
-developer terminal and launch `dev` again (`--restart` is not supported).
+launcher that holds this checkout's advisory lock and waits for it to exit.
+If a verified launcher stays stuck during shutdown (observed on macOS), the
+explicit `--restart` command escalates to SIGKILL **only after re-checking
+that the same PID still owns the project's development lock**. It then
+waits for that server's previous port to be released before starting one
+replacement server. It never force-stops arbitrary Python processes, and
+never silently opens a new port when the previous dev server still occupies
+its port.
+
+Diagnostics: a failed restart reports the stored lock path, verified owner
+PID, or the exact port remaining occupied. You can inspect the stored owner
+without deleting any files:
+
+~~~bash
+python - <<'PY'
+from pathlib import Path
+import json
+import subprocess
+from garment_nesting import app
+
+lock = app._dev_lock_path(Path(app.__file__).resolve().parent)
+state = json.loads(lock.read_text()) if lock.exists() else {}
+print("Lock:", lock, "State:", state)
+pid = state.get("launcher_pid")
+if isinstance(pid, int):
+    subprocess.run(["ps", "-p", str(pid), "-o", "pid,ppid,stat,etime,command"])
+PY
+~~~
+
+On Windows, use Ctrl-C in the old developer terminal and launch `dev`
+again (`--restart` is not supported).
 
 Check the URL **printed by the new server**, which may be different from
 the old bookmarked URL when port 8080 is occupied. The page now displays
