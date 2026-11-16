@@ -32,9 +32,24 @@ and allowed rotations (0°, 180°, or both), with live piece totals and immediat
 table rendering after upload. Zero copies are valid and do not produce solver
 instances. Fabric inputs include width, selvedges, end margins, base gap,
 an optional maximum length, and an optimizer time budget.
-These inputs are validated and previewable but are currently browser-session
-state, not yet consumed by the existing PackingSolver CLI. Algorithm selection, persistent job storage, model
-comparison and selected-result export are upcoming stages.
+The GUI now uses these inputs to run two selectable processors: a deterministic
+shelf-layout baseline and an optional native PackingSolver optimizer. Results
+are independently checked, ranked by consumed fabric length, and can be
+previewed as scaled placement polygons. Selected pieces, copies, margins and
+0°/180° rotation rules are enforced; the native solver currently uses a
+**conservative global gap** (base gap + twice the largest per-piece margin).
+In both cases, exact configured pairwise polygon clearances are checked
+after solving. Different uploaded SVG files remain distinguishable by upload
+identity even if their filenames or group IDs match.
+
+The **GUI polygon preview is not a cutting master** and this phase does not
+export the selected original SVG. Editable original-vector export and
+persistent job storage are upcoming stages. Settings and uploaded SVGs remain
+in browser-session RAM only. The existing PackingSolver CLI is unchanged.
+If native PackingSolver is not available for the current Python interpreter,
+select only the shelf baseline (it uses Shapely and does not need the native wheel).
+Maximum experiment size is currently 10,000 total pieces; larger jobs fail
+explicitly, without dropping pieces.
 
 Each push to `main` automatically builds a zipped Windows x64 app and
 macOS Apple Silicon/Intel apps as GitHub Actions artifacts.
