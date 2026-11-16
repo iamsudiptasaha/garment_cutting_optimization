@@ -228,3 +228,36 @@ def test_invalid_candidate_does_not_block_comparison():
     assert result["best_algorithm"] in {"shelf", "native"}
     assert all(c["status"] in {"FEASIBLE", "UNAVAILABLE", "NOT_FOUND", "ERROR"}
                for c in result["candidates"])
+
+
+
+def test_excluded_oversized_and_invalid_groups_do_not_block_valid_selection():
+    svg = (
+        b'<svg xmlns="http://www.w3.org/2000/svg" '
+        b'width="50in" height="50in" viewBox="0 0 50 50">'
+        b'<g id="ok"><path d="M 1 1 L 3 1 L 3 3 L 1 3 Z" />'
+        b'<text x="2" y="2">OK</text></g>'
+        b'<g id="too-wide"><path d="M 0 20 L 40 20 L 40 23 L 0 23 Z" />'
+        b'<text x="2" y="22">WIDE</text></g>'
+        b'<g id="invalid"><path d="M 5 5 L 6 6 L 7 7" />'
+        b'<text x="5" y="5">BAD</text></g>'
+        b'</svg>'
+    )
+    inventory = inspect_upload("mixed.svg", svg)
+    assert len(inventory) == 3
+    assert any(row["valid"] == "Invalid" for row in inventory)
+    rows = namespace_uploaded_rows(inventory, "selected")
+    for row in rows:
+        if row["group"] != "ok":
+            edit_pattern(rows, row["id"], "qty", 0)
+    settings = DEFAULT_FABRIC_SETTINGS.copy()
+    settings["fabric_width_in"] = 10
+    job = job_input_payload(rows, settings)
+    original = bytes(svg)
+    result = run_experiments(
+        {"selected": {"filename": "mixed.svg", "content": svg}},
+        job, ["shelf"],
+    )
+    assert result["candidates"][0]["status"] == "FEASIBLE"
+    assert [p["group_id"] for p in result["manifest"]["pieces"]] == ["ok"]
+    assert svg == original
