@@ -261,3 +261,25 @@ def test_excluded_oversized_and_invalid_groups_do_not_block_valid_selection():
     assert result["candidates"][0]["status"] == "FEASIBLE"
     assert [p["group_id"] for p in result["manifest"]["pieces"]] == ["ok"]
     assert svg == original
+
+
+
+def test_entire_reference_marker_44_pieces_is_accounted_for():
+    svg = REFERENCE.read_bytes()
+    rows = namespace_uploaded_rows(inspect_upload(REFERENCE.name, svg), "all")
+    settings = DEFAULT_FABRIC_SETTINGS.copy()
+    settings["fabric_width_in"] = 60
+    result = run_experiments(
+        {"all": {"filename": REFERENCE.name, "content": svg}},
+        job_input_payload(rows, settings),
+        ["shelf"],
+    )
+    candidate = result["candidates"][0]
+    assert candidate["status"] == "FEASIBLE", candidate
+    assert candidate["report"]["placed_pieces"] == 44
+    assert candidate["report"]["required_pieces"] == 44
+    assert len(candidate["report"]["placements"]) == 44
+    assert all(item["rotation_deg"] in (0, 180)
+               for item in candidate["report"]["placements"])
+    assert 0 <= candidate["report"]["wastage_pct"] < 100
+    assert REFERENCE.read_bytes() == svg
