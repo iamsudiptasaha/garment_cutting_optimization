@@ -117,6 +117,19 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
         rows: list[dict] = []
         source_uploads: dict[str, dict] = {}
         fabric_settings = DEFAULT_FABRIC_SETTINGS.copy()
+        input_version = {"value": 0}
+        solver_widgets: dict = {}
+
+        def mark_job_stale() -> None:
+            input_version["value"] += 1
+            if solver_widgets:
+                solver_widgets["status"].text = (
+                    "Inputs changed. Run the selected solvers again."
+                )
+                solver_widgets["preview"].visible = False
+                solver_widgets["note"].visible = False
+                solver_widgets["table"].rows = []
+                solver_widgets["table"].update()
         ui.colors(primary="#17657b")
         ui.add_head_html("""
             <style>
@@ -176,6 +189,7 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
                     previous = fabric_settings[field]
                     try:
                         edit_fabric_setting(fabric_settings, field, e.value)
+                        mark_job_stale()
                     except ValueError as exc:
                         ui.notify(str(exc), type="negative")
                         if e.sender.value != previous:
@@ -228,6 +242,7 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
                         ui.notify(f"Cannot inspect {e.file.name}: {exc}", type="negative")
                         return
                     refresh(update_table=False)
+                    mark_job_stale()
                     import_status.text = (
                         f"{count} patterns imported from {e.file.name}. "
                         "Edit quantities, inclusion, rotation and margins below."
@@ -271,11 +286,13 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
                         for row in rows:
                             row["included"] = row["valid"] == "Valid"
                         refresh()
+                        mark_job_stale()
 
                     def exclude_all() -> None:
                         for row in rows:
                             row["included"] = False
                         refresh()
+                        mark_job_stale()
 
                     ui.button("Include all valid", on_click=select_all).props("outline")
                     ui.button("Exclude all", on_click=exclude_all).props("outline")
@@ -358,6 +375,7 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
                     try:
                         data = e.args
                         edit_pattern(rows, data["id"], data["field"], data["value"])
+                        mark_job_stale()
                     except (ValueError, KeyError, TypeError) as exc:
                         ui.notify(str(exc), type="negative")
                     finally:
@@ -405,9 +423,11 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
                 with ui.row().classes("items-center gap-5 flex-wrap"):
                     baseline_selected = ui.checkbox(
                         "Shelf baseline", value=True,
+                        on_change=lambda e: mark_job_stale(),
                     ).classes("text-base font-medium")
                     native_selected = ui.checkbox(
                         "PackingSolver optimizer (optional install)", value=False,
+                        on_change=lambda e: mark_job_stale(),
                     ).classes("text-base font-medium")
 
                 solver_status = ui.label(
@@ -442,6 +462,10 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
                 layout_preview = ui.image().classes("w-full max-w-3xl")
                 layout_preview.visible = False
                 latest: dict = {}
+                solver_widgets.update({
+                    "status": solver_status, "preview": layout_preview,
+                    "note": preview_note, "table": results_table,
+                })
                 working = False
 
                 def show_layout(e) -> None:
@@ -495,6 +519,7 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
                         return
 
                     working = True
+                    solving_version = input_version["value"]
                     solve_button.disable()
                     solver_status.text = (
                         f"Solving {job['required_pieces']} pieces with "
@@ -508,6 +533,12 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
                         result = await run.io_bound(
                             run_experiments, dict(source_uploads), job, algorithms,
                         )
+                        if input_version["value"] != solving_version:
+                            solver_status.text = (
+                                "Inputs changed during the run. Discarded stale "
+                                "results; run again."
+                            )
+                            return
                         latest.clear()
                         latest.update(result)
                         display_rows = []
