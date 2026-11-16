@@ -196,6 +196,24 @@ def _locked_owner_still_matches(root: Path, pid: int) -> bool:
         return state.get("launcher_pid") == pid and _verified_dev_process(pid)
 
 
+def _wait_for_old_dev_server_release(port: object) -> bool:
+    """Prevent restart from creating another port while an old child still listens."""
+    if not isinstance(port, int) or not 1 <= port <= 65535:
+        return True
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        if _port_available(port):
+            return True
+        time.sleep(0.2)
+    print(
+        f"Previous server still occupies port {port}. "
+        f"Inspect: lsof -nP -iTCP:{port} -sTCP:LISTEN. "
+        "No additional server opened.",
+        file=sys.stderr,
+    )
+    return False
+
+
 def _restart_existing_development_launcher(root: Path) -> bool:
     """Stop exactly the checkout lock owner, escalating only if graceful stop fails.
 
@@ -209,6 +227,7 @@ def _restart_existing_development_launcher(root: Path) -> bool:
         if owner is not None:
             return True
         pid = existing.get("launcher_pid")
+        previous_port = existing.get("port")
         if not _verified_dev_process(pid):
             print(
                 f"Cannot verify dev lock owner PID {pid!r}. "
@@ -224,14 +243,14 @@ def _restart_existing_development_launcher(root: Path) -> bool:
 
     if _wait_for_dev_lock_release(root, seconds=8):
         print(f"Stopped old development launcher PID {pid}.", flush=True)
-        return True
+        return _wait_for_old_dev_server_release(previous_port)
 
     # A Python launcher can become stuck in shutdown on macOS; sending
     # SIGTERM repeatedly does not fix that. --restart explicitly authorizes
     # escalation, but only if the lock still names this very same dev PID.
     if not _locked_owner_still_matches(root, pid):
         if _wait_for_dev_lock_release(root, seconds=1):
-            return True
+            return _wait_for_old_dev_server_release(previous_port)
         print(
             f"Cannot safely force-stop PID {pid}: lock owner or process identity changed. "
             "No additional server opened.",
@@ -251,7 +270,7 @@ def _restart_existing_development_launcher(root: Path) -> bool:
 
     if _wait_for_dev_lock_release(root, seconds=5):
         print(f"Released old launcher lock (PID {pid}).", flush=True)
-        return True
+        return _wait_for_old_dev_server_release(previous_port)
     print(
         f"Lock remains held after stopping PID {pid}; "
         f"inspect {_dev_lock_path(root)}. No additional server opened.",
