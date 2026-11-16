@@ -175,6 +175,12 @@ def main() -> None:
             page.locator('img[src^="data:image/svg+xml;base64,"]').wait_for(
                 state="visible", timeout=15000,
             )
+            page.wait_for_function(
+                "() => [...document.querySelectorAll('img')].some("
+                "img => img.src.startsWith('data:image/svg+xml;base64,') "
+                "&& img.complete && img.naturalWidth > 0 && img.naturalHeight > 0)",
+                timeout=15000,
+            )
             page.screenshot(
                 path=str(ARTIFACTS / "solver-layout-from-browser.png"),
                 full_page=True,
