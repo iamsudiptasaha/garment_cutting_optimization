@@ -150,7 +150,37 @@ def main() -> None:
                 }, indent=2),
                 encoding="utf-8",
             )
+            # Solve an actual uploaded pattern through the new GUI, without
+            # relying on mocks or directly calling the Python solver.
+            page.get_by_role("button", name="Exclude all").click()
+            first = table_rows.first
+            first.locator('input[type="number"]').first.fill("1")
+            first.locator('input[type="number"]').first.press("Tab")
+            first.locator('[role="checkbox"]').first.click()
+            page.get_by_text("1 of 44 patterns included", exact=False).wait_for(
+                timeout=15000,
+            )
+            fabric_width_input = page.locator(".nesting-input input").first
+            fabric_width_input.fill("60")
+            fabric_width_input.press("Tab")
+            page.get_by_text("Usable width: 60 in", exact=False).wait_for(
+                timeout=10000,
+            )
+            page.get_by_role("button", name="Run selected solvers").click()
+            page.get_by_text(
+                "Shortest validated candidate", exact=False,
+            ).wait_for(timeout=60000)
+            page.get_by_text("FEASIBLE", exact=True).wait_for(timeout=10000)
+            page.get_by_role("button", name="View layout").click()
+            page.locator('img[src^="data:image/svg+xml;base64,"]').wait_for(
+                state="visible", timeout=15000,
+            )
+            page.screenshot(
+                path=str(ARTIFACTS / "solver-layout-from-browser.png"),
+                full_page=True,
+            )
             assert not errors, f"JavaScript runtime errors: {errors}"
+            print("PASS browser solver: selected SVG piece placed and visualized", flush=True)
             print(
                 f"PASS browser: {rendered_count} rendered rows, "
                 f"{font_px}px fabric label, quantity 0 updated",
