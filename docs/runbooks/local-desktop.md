@@ -163,17 +163,51 @@ are in inches. Width must exceed combined left and right reserves; maximum
 length, when specified, must exceed start/end reserves.
 
 The extra per-pattern margin is a uniform **placement keep-out**, not a seam
-allowance, and never alters the cutting outline. Future solver semantics:
-minimum gap between pieces = global gap + margin of piece A + margin of piece B.
+allowance, and never alters the cutting outline. The solver validator now
+enforces minimum gap between pieces = global gap + margin A + margin B.
 The "Preview job inputs" button shows the validated, normalized job payload.
 
 These controls update a **per-browser-session** configuration only. Multiple
 uploads with the same SVG filename or group IDs have distinct internal IDs.
 Uploaded original files and selection settings are **not saved** across
-restarts, and they do not yet affect the PackingSolver CLI adapter.
-The pure `selected_job_rows` function provides a validated source-qualified
-configuration for the future plugin-based experiment runner. Solver plugins,
-comparison and selected-result export are still pending.
+restarts. The browser-session source bytes are kept in RAM (up to a combined
+100 MB per page) so a solver can use precisely the uploaded files; they are
+written to short-lived temporary files only during geometry preparation.
+The existing `garment-nesting nest` CLI and its output format are unchanged.
+
+## Step 3: solving experiments
+
+Choose **Shelf baseline** (runs with Shapely) and/or **PackingSolver native**
+(requires an installed compatible `packingsolver.irregular` wheel). Press
+**Run selected solvers**. The computation runs outside the NiceGUI event loop.
+The GUI displays each processor's result status, actual used fabric length,
+wastage percentage, total placed copies, and a selectable polygon-only preview
+of feasible solutions. Complete results are ranked by shortest validated
+length; unsupported native environments explicitly show `UNAVAILABLE`.
+
+The new job adapter honors per-pattern quantity, 0°/180° allowed rotations,
+the base gap, both pieces' extra margins, the fixed width, left/right selvedge,
+start/end reserves, and optional maximum length. The native adapter uses a
+conservative global distance of `base_gap + 2 × max(extra_margin)` because
+the solver exposes only a uniform item–item spacing parameter. Therefore
+native layout quality can be worse than a future truly per-piece solver.
+The shelf baseline uses padded bounding rectangles and is also deliberately
+conservative; neither result is evidence of a globally optimal marker.
+
+Every candidate must pass an independent Shapely validator checking:
+requested counts, allowed rotations, no mirroring, source-identity mappings,
+actual polygon intersection, pairwise clearance, usable width and maximum
+length. A missing or incomplete placement is `NOT_FOUND` (not proof of
+infeasibility). Impossible piece width or an area lower bound can be reported
+as `PROVEN_INFEASIBLE` before running a solver. Wastage uses original piece
+polygon areas over **full fabric width × total length including start/end
+reserves**. No SVG path data is altered.
+
+The displayed result is only a **solver-polygon preview**. Cutting-safe
+original Bézier/group-label SVG export, high-resolution PNG/JPEG export from
+selected layouts, job persistence and extended algorithm comparison remain
+separate future stages. Max total pieces per experiment is 10,000; an
+oversized job is rejected rather than silently truncated.
 
 ## Security
 

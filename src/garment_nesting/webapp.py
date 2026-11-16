@@ -83,10 +83,23 @@ def replace_inventory_table_rows(table, rows: list[dict]) -> None:
     table.update()
 
 
-async def add_uploaded_patterns(file, rows: list[dict], table) -> int:
-    """Import and immediately display uploaded patterns without another UI action."""
-    new_rows = await inspect_uploaded_file(file)
-    rows.extend(namespace_uploaded_rows(new_rows, uuid4().hex))
+async def add_uploaded_patterns(
+    file, rows: list[dict], table, sources: dict[str, dict] | None = None,
+) -> int:
+    """Import, display, and optionally retain source bytes for this browser session."""
+    from nicegui import run
+
+    content = await file.read()
+    if sources is not None and (
+        sum(len(source["content"]) for source in sources.values()) + len(content)
+        > 100_000_000
+    ):
+        raise ValueError("Uploaded SVGs exceed the 100 MB session limit")
+    new_rows = await run.io_bound(inspect_upload, file.name, content)
+    source_id = uuid4().hex
+    rows.extend(namespace_uploaded_rows(new_rows, source_id))
+    if sources is not None:
+        sources[source_id] = {"filename": file.name, "content": content}
     replace_inventory_table_rows(table, rows)
     return len(new_rows)
 
@@ -102,7 +115,21 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
     @ui.page("/")
     def home() -> None:
         rows: list[dict] = []
+        source_uploads: dict[str, dict] = {}
         fabric_settings = DEFAULT_FABRIC_SETTINGS.copy()
+        input_version = {"value": 0}
+        solver_widgets: dict = {}
+
+        def mark_job_stale() -> None:
+            input_version["value"] += 1
+            if solver_widgets:
+                solver_widgets["status"].text = (
+                    "Inputs changed. Run the selected solvers again."
+                )
+                solver_widgets["preview"].visible = False
+                solver_widgets["note"].visible = False
+                solver_widgets["table"].rows = []
+                solver_widgets["table"].update()
         ui.colors(primary="#17657b")
         ui.add_head_html("""
             <style>
@@ -162,6 +189,7 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
                     previous = fabric_settings[field]
                     try:
                         edit_fabric_setting(fabric_settings, field, e.value)
+                        mark_job_stale()
                     except ValueError as exc:
                         ui.notify(str(exc), type="negative")
                         if e.sender.value != previous:
@@ -207,11 +235,14 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
 
                 async def uploaded(e) -> None:
                     try:
-                        count = await add_uploaded_patterns(e.file, rows, table)
+                        count = await add_uploaded_patterns(
+                            e.file, rows, table, source_uploads,
+                        )
                     except (ValueError, OSError, RuntimeError, TypeError) as exc:
                         ui.notify(f"Cannot inspect {e.file.name}: {exc}", type="negative")
                         return
                     refresh(update_table=False)
+                    mark_job_stale()
                     import_status.text = (
                         f"{count} patterns imported from {e.file.name}. "
                         "Edit quantities, inclusion, rotation and margins below."
@@ -255,11 +286,13 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
                         for row in rows:
                             row["included"] = row["valid"] == "Valid"
                         refresh()
+                        mark_job_stale()
 
                     def exclude_all() -> None:
                         for row in rows:
                             row["included"] = False
                         refresh()
+                        mark_job_stale()
 
                     ui.button("Include all valid", on_click=select_all).props("outline")
                     ui.button("Exclude all", on_click=exclude_all).props("outline")
@@ -342,6 +375,7 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
                     try:
                         data = e.args
                         edit_pattern(rows, data["id"], data["field"], data["value"])
+                        mark_job_stale()
                     except (ValueError, KeyError, TypeError) as exc:
                         ui.notify(str(exc), type="negative")
                     finally:
@@ -375,6 +409,184 @@ def run_server(*, host: str, port: int, reload: bool, show: bool) -> None:
                     preview_dialog.open()
 
                 ui.button("Preview job inputs", on_click=preview_job).props("outline")
+
+            with ui.card().classes("w-full gap-4"):
+                ui.label("Step 3 · Solve and compare layouts").classes(
+                    "text-2xl font-bold"
+                )
+                ui.label(
+                    "Run a deterministic shelf baseline, the optional native "
+                    "PackingSolver, or both. Candidate placements are independently "
+                    "checked for all copies, fabric bounds, 0°/180° rotations and "
+                    "pairwise piece gaps. Native margins use conservative spacing."
+                ).classes("text-base text-gray-600")
+                with ui.row().classes("items-center gap-5 flex-wrap"):
+                    baseline_selected = ui.checkbox(
+                        "Shelf baseline", value=True,
+                        on_change=lambda e: mark_job_stale(),
+                    ).classes("text-base font-medium")
+                    native_selected = ui.checkbox(
+                        "PackingSolver optimizer (optional install)", value=False,
+                        on_change=lambda e: mark_job_stale(),
+                    ).classes("text-base font-medium")
+
+                solver_status = ui.label(
+                    "Import patterns and set the job inputs, then run the solver."
+                ).classes("text-base font-semibold")
+                result_columns = [
+                    {"name": "name", "label": "Processor", "field": "name", "align": "left"},
+                    {"name": "status", "label": "Status", "field": "status"},
+                    {"name": "length", "label": "Fabric length (in)", "field": "length"},
+                    {"name": "waste", "label": "Wastage", "field": "waste"},
+                    {"name": "pieces", "label": "Placed", "field": "pieces"},
+                    {"name": "message", "label": "Details", "field": "message"},
+                    {"name": "view", "label": "Preview", "field": "view"},
+                ]
+                results_table = ui.table(
+                    columns=result_columns, rows=[], row_key="algorithm",
+                ).classes("w-full nesting-inventory").props(
+                    ':rows-per-page-options="[10,25,50,0]"'
+                )
+                results_table.add_slot("body-cell-view", r"""
+                    <q-td :props="props">
+                      <q-btn v-if="props.row.status === 'FEASIBLE'"
+                        flat color="primary" label="View layout"
+                        @click="$parent.$emit('view-solved-layout', props.row.algorithm)" />
+                    </q-td>
+                """)
+                preview_note = ui.label(
+                    "Preview shows simplified placement polygons; the original SVG "
+                    "curves and labels remain unchanged for future vector export."
+                ).classes("text-base text-gray-600")
+                preview_note.visible = False
+                layout_preview = ui.image().classes("w-full max-w-3xl")
+                layout_preview.visible = False
+                latest: dict = {}
+                solver_widgets.update({
+                    "status": solver_status, "preview": layout_preview,
+                    "note": preview_note, "table": results_table,
+                })
+                working = False
+
+                def show_layout(e) -> None:
+                    from garment_nesting.processor.preview import geometry_preview_uri
+
+                    algorithm = e.args
+                    entry = next(
+                        (candidate for candidate in latest.get("candidates", [])
+                         if candidate["algorithm"] == algorithm),
+                        None,
+                    )
+                    if entry is None or entry["status"] != "FEASIBLE":
+                        ui.notify("No verified layout for that processor", type="warning")
+                        return
+                    try:
+                        data_uri = geometry_preview_uri(latest["manifest"], entry["report"])
+                    except ValueError as exc:
+                        ui.notify(str(exc), type="warning")
+                        return
+                    layout_preview.set_source(data_uri)
+                    layout_preview.visible = True
+                    preview_note.visible = True
+                    ui.notify(f"Showing validated {entry['name']} geometry")
+
+                results_table.on("view-solved-layout", show_layout)
+
+                async def solve_clicked() -> None:
+                    from nicegui import run
+
+                    from garment_nesting.processor.experiments import run_experiments
+
+                    nonlocal working
+                    if working:
+                        return
+                    algorithms = []
+                    if baseline_selected.value:
+                        algorithms.append("shelf")
+                    if native_selected.value:
+                        algorithms.append("native")
+                    try:
+                        job = job_input_payload(rows, fabric_settings)
+                        if not algorithms:
+                            raise ValueError("Select at least one solving algorithm")
+                        missing = {
+                            entry["source_id"] for entry in job["patterns"]
+                        } - source_uploads.keys()
+                        if missing:
+                            raise ValueError("Re-upload missing SVG sources before solving")
+                    except ValueError as exc:
+                        ui.notify(str(exc), type="negative")
+                        return
+
+                    working = True
+                    solving_version = input_version["value"]
+                    solve_button.disable()
+                    solver_status.text = (
+                        f"Solving {job['required_pieces']} pieces with "
+                        + ", ".join(algorithms) + "..."
+                    )
+                    layout_preview.visible = False
+                    preview_note.visible = False
+                    results_table.rows = []
+                    results_table.update()
+                    try:
+                        result = await run.io_bound(
+                            run_experiments, dict(source_uploads), job, algorithms,
+                        )
+                        if input_version["value"] != solving_version:
+                            solver_status.text = (
+                                "Inputs changed during the run. Discarded stale "
+                                "results; run again."
+                            )
+                            return
+                        latest.clear()
+                        latest.update(result)
+                        display_rows = []
+                        for candidate in result["candidates"]:
+                            report = candidate.get("report", {})
+                            length = report.get("fabric_length_consumed_in")
+                            waste = report.get("wastage_pct")
+                            display_rows.append({
+                                "algorithm": candidate["algorithm"],
+                                "name": candidate["name"],
+                                "status": candidate["status"],
+                                "length": f"{length:.2f}" if length is not None else "—",
+                                "waste": f"{waste:.2f}%" if waste is not None else "—",
+                                "pieces": (
+                                    f"{report.get('placed_pieces', 0)} / "
+                                    f"{report.get('required_pieces', job['required_pieces'])}"
+                                ),
+                                "message": candidate.get("message", ""),
+                            })
+                        results_table.rows = display_rows
+                        results_table.update()
+                        winner = result["best_algorithm"]
+                        if winner:
+                            best = next(
+                                candidate for candidate in result["candidates"]
+                                if candidate["algorithm"] == winner
+                            )
+                            solver_status.text = (
+                                "Completed. Shortest validated candidate: "
+                                f"{best['name']} — "
+                                f"{best['report']['fabric_length_consumed_in']:.2f} in."
+                            )
+                        else:
+                            solver_status.text = (
+                                "No validated complete layout found. Review individual "
+                                "processor statuses; NOT_FOUND is not proof of infeasibility."
+                            )
+                    except (ValueError, RuntimeError, TypeError, KeyError) as exc:
+                        solver_status.text = f"Experiment failed: {exc}"
+                        ui.notify(solver_status.text, type="negative")
+                    finally:
+                        working = False
+                        solve_button.enable()
+
+                solve_button = ui.button(
+                    "Run selected solvers", on_click=solve_clicked,
+                ).props("size=lg")
+
 
     ui.run(
         host=host, port=port, reload=reload, show=show,
