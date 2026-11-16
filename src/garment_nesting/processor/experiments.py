@@ -396,7 +396,7 @@ def run_experiments(
                 "algorithm": name, "name": ALGORITHMS[name],
                 "status": "UNAVAILABLE", "message": str(exc),
             })
-        except (ValueError, TypeError, KeyError, OSError, RuntimeError) as exc:
+        except (ValueError, TypeError, KeyError, OSError) as exc:
             candidates.append({
                 "algorithm": name, "name": ALGORITHMS[name],
                 "status": "ERROR", "message": f"{type(exc).__name__}: {exc}",
