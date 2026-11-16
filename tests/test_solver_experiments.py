@@ -20,14 +20,14 @@ from garment_nesting.webapp import inspect_upload
 
 REFERENCE = Path(__file__).resolve().parents[1] / "samples" / "FC_HH_Full_Pyjama.svg"
 SIMPLE = (
-    '<svg xmlns="http://www.w3.org/2000/svg" '
-    'width="50in" height="50in" viewBox="0 0 50 50">'
-    '<g id="front"><path d="M 2 3 L 4 3 L 4 5 L 2 5 Z" />'
-    '<text x="2.5" y="4">FRONT</text></g>'
-    '<g id="back"><path d="M 20 20 L 23 20 L 23 22 L 20 22 Z" />'
-    '<text x="21" y="21">BACK</text></g>'
-    '</svg>'
-).encode()
+    b'<svg xmlns="http://www.w3.org/2000/svg" '
+    b'width="50in" height="50in" viewBox="0 0 50 50">'
+    b'<g id="front"><path d="M 2 3 L 4 3 L 4 5 L 2 5 Z" />'
+    b'<text x="2.5" y="4">FRONT</text></g>'
+    b'<g id="back"><path d="M 20 20 L 23 20 L 23 22 L 20 22 Z" />'
+    b'<text x="21" y="21">BACK</text></g>'
+    b'</svg>'
+)
 
 
 def _make_job(
