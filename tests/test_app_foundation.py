@@ -507,3 +507,105 @@ def test_dev_restart_replaces_old_watcher_without_adding_ports(tmp_path):
                 except subprocess.TimeoutExpired:
                     os.killpg(process.pid, signal.SIGKILL)
                     process.wait(timeout=5)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX stopped-process restart test")
+def test_dev_restart_force_stops_frozen_verified_launcher(tmp_path):
+    """Regression: an owner ignoring TERM must not block fresh UI indefinitely.
+
+    Freeze only the dev launcher, not its server; restart must SIGKILL that
+    verified lock owner after TERM fails, then release its old listening port.
+    """
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+
+    env = os.environ.copy()
+    for key in tuple(env):
+        if key.startswith("NICEGUI_SCREEN_TEST") or key == "PYTEST_CURRENT_TEST":
+            env.pop(key)
+    cmd = [
+        sys.executable, "-m", "garment_nesting.app",
+        "dev", "--port", str(port), "--no-browser",
+    ]
+    old_log = tmp_path / "frozen-before.log"
+    new_log = tmp_path / "frozen-after.log"
+    with old_log.open("w", encoding="utf-8") as logfile:
+        old = subprocess.Popen(
+            cmd, env=env, stdout=logfile, stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+    restarted = None
+    try:
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            assert old.poll() is None, old_log.read_text()
+            try:
+                with urlopen(f"http://127.0.0.1:{port}/health", timeout=0.5) as response:
+                    if response.status == 200:
+                        break
+            except OSError:
+                time.sleep(0.2)
+        else:
+            pytest.fail("Original launcher never became healthy: " + old_log.read_text())
+
+        # Frozen watcher cannot handle SIGTERM, but still holds the OS lock.
+        os.kill(old.pid, signal.SIGSTOP)
+        with new_log.open("w", encoding="utf-8") as logfile:
+            restarted = subprocess.Popen(
+                [*cmd, "--restart"], env=env, stdout=logfile,
+                stderr=subprocess.STDOUT, start_new_session=True,
+            )
+
+        old.wait(timeout=22)
+        assert old.returncode == -signal.SIGKILL, new_log.read_text()
+        deadline = time.monotonic() + 25
+        while time.monotonic() < deadline:
+            if restarted.poll() is not None:
+                pytest.fail("Restart exited: " + new_log.read_text())
+            try:
+                with urlopen(f"http://127.0.0.1:{port}/health", timeout=0.5) as response:
+                    if (
+                        response.status == 200
+                        and b'"application":"garment-nesting"' in response.read()
+                    ):
+                        break
+            except OSError:
+                time.sleep(0.2)
+        else:
+            pytest.fail("Replacement failed to bind original port: " + new_log.read_text())
+        log = new_log.read_text()
+        assert f"Launcher PID {old.pid} ignored SIGTERM" in log
+        assert f"Released old launcher lock (PID {old.pid})" in log
+        assert f"Local GUI: http://127.0.0.1:{port}" in log
+    finally:
+        for process in (restarted, old):
+            if process is None:
+                continue
+            try:
+                os.kill(process.pid, signal.SIGCONT)
+            except ProcessLookupError:
+                pass
+            try:
+                os.killpg(process.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            try:
+                process.wait(timeout=8)
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid, signal.SIGKILL)
+                process.wait(timeout=5)
+
+
+def test_unverifiable_lock_owner_is_never_signalled(tmp_path, monkeypatch):
+    """Never force terminate a random PID or a stale lockfile occupant."""
+    from garment_nesting import app as gui_app
+
+    path = gui_app._dev_lock_path(tmp_path)
+    path.write_text('{"port":8080,"launcher_pid":99999999}', encoding="utf-8")
+
+    calls = []
+    monkeypatch.setattr(gui_app.os, "kill", lambda pid, signum: calls.append((pid, signum)))
+    # A stale lock is never a reason to send a signal.
+    assert gui_app._restart_existing_development_launcher(tmp_path) is True
+    assert not calls

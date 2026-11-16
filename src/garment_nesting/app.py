@@ -163,11 +163,62 @@ def _dev_server_revision(port: int) -> str | None:
     return None
 
 
-def _restart_existing_development_launcher(root: Path) -> bool:
-    """Stop only the verified launcher holding this checkout's lock.
+def _verified_dev_process(pid: int) -> bool:
+    """Check the exact owner is still a project dev launcher before signalling it."""
+    if not isinstance(pid, int) or pid <= 1 or pid == os.getpid():
+        return False
+    lookup = subprocess.run(
+        ["ps", "-ww", "-p", str(pid), "-o", "command="],
+        capture_output=True, text=True, check=False,
+    )
+    return lookup.returncode == 0 and all(
+        token in lookup.stdout for token in ("-m garment_nesting.app", "dev")
+    )
 
-    No signal is sent to arbitrary TCP listeners, other Python programs,
-    or unmatched PIDs from a stale lock file.
+
+def _wait_for_dev_lock_release(root: Path, *, seconds: float) -> bool:
+    """A freed OS lock, not disappearance of the process row, permits restart."""
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        with _dev_instance_lock(root) as (owner, _):
+            if owner is not None:
+                return True
+        time.sleep(0.2)
+    with _dev_instance_lock(root) as (owner, _):
+        return owner is not None
+
+
+def _locked_owner_still_matches(root: Path, pid: int) -> bool:
+    """Avoid escalating to an unrelated PID after a concurrent exit/restart."""
+    with _dev_instance_lock(root) as (owner, state):
+        if owner is not None:
+            return False
+        return state.get("launcher_pid") == pid and _verified_dev_process(pid)
+
+
+def _wait_for_old_dev_server_release(port: object) -> bool:
+    """Prevent restart from creating another port while an old child still listens."""
+    if not isinstance(port, int) or not 1 <= port <= 65535:
+        return True
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        if _port_available(port):
+            return True
+        time.sleep(0.2)
+    print(
+        f"Previous server still occupies port {port}. "
+        f"Inspect: lsof -nP -iTCP:{port} -sTCP:LISTEN. "
+        "No additional server opened.",
+        file=sys.stderr,
+    )
+    return False
+
+
+def _restart_existing_development_launcher(root: Path) -> bool:
+    """Stop exactly the checkout lock owner, escalating only if graceful stop fails.
+
+    A stale lock file is harmless; force termination is limited to a verified
+    `garment_nesting.app dev` process still holding the same checkout lock.
     """
     if os.name != "posix":
         print("--restart is currently supported for macOS/Linux development only.", file=sys.stderr)
@@ -176,36 +227,56 @@ def _restart_existing_development_launcher(root: Path) -> bool:
         if owner is not None:
             return True
         pid = existing.get("launcher_pid")
-        if not isinstance(pid, int) or pid <= 1 or pid == os.getpid():
-            print("Cannot verify existing launcher PID. Refusing to terminate it.", file=sys.stderr)
-            return False
-        lookup = subprocess.run(
-            ["ps", "-ww", "-p", str(pid), "-o", "command="],
-            capture_output=True, text=True, check=False,
-        )
-        if lookup.returncode != 0 or not all(
-            token in lookup.stdout for token in ("-m garment_nesting.app", "dev")
-        ):
+        previous_port = existing.get("port")
+        if not _verified_dev_process(pid):
             print(
-                f"PID {pid} is not a verified garment_nesting.app dev process; "
-                "refusing to stop it.",
+                f"Cannot verify dev lock owner PID {pid!r}. "
+                f"Inspect: {_dev_lock_path(root)}. Refusing to terminate an unknown process.",
                 file=sys.stderr,
             )
             return False
+        print(f"Stopping existing development launcher PID {pid}...", flush=True)
         try:
             os.kill(pid, signal.SIGTERM)
         except ProcessLookupError:
             pass
-    deadline = time.monotonic() + 12
-    while time.monotonic() < deadline:
-        with _dev_instance_lock(root) as (owner, _):
-            if owner is not None:
-                print(f"Stopped old development launcher PID {pid}.", flush=True)
-                return True
-        time.sleep(0.2)
-    print("Old launcher did not exit. Stop it manually; no new server was opened.", file=sys.stderr)
-    return False
 
+    if _wait_for_dev_lock_release(root, seconds=8):
+        print(f"Stopped old development launcher PID {pid}.", flush=True)
+        return _wait_for_old_dev_server_release(previous_port)
+
+    # A Python launcher can become stuck in shutdown on macOS; sending
+    # SIGTERM repeatedly does not fix that. --restart explicitly authorizes
+    # escalation, but only if the lock still names this very same dev PID.
+    if not _locked_owner_still_matches(root, pid):
+        if _wait_for_dev_lock_release(root, seconds=1):
+            return _wait_for_old_dev_server_release(previous_port)
+        print(
+            f"Cannot safely force-stop PID {pid}: lock owner or process identity changed. "
+            "No additional server opened.",
+            file=sys.stderr,
+        )
+        return False
+
+    print(
+        f"Launcher PID {pid} ignored SIGTERM; force-stopping that verified dev launcher.",
+        file=sys.stderr,
+        flush=True,
+    )
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+
+    if _wait_for_dev_lock_release(root, seconds=5):
+        print(f"Released old launcher lock (PID {pid}).", flush=True)
+        return _wait_for_old_dev_server_release(previous_port)
+    print(
+        f"Lock remains held after stopping PID {pid}; "
+        f"inspect {_dev_lock_path(root)}. No additional server opened.",
+        file=sys.stderr,
+    )
+    return False
 
 def _reuse_existing_dev(state: dict, *, show: bool) -> int:
     """A second invocation reuses the current browser URL; never spawns a child."""
