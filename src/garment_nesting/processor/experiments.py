@@ -12,6 +12,7 @@ from hashlib import sha256
 from math import isfinite
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from xml.etree import ElementTree as ET
 
 from shapely.affinity import rotate, translate
 from shapely.geometry import Polygon
@@ -31,6 +32,27 @@ EPS = 0.00001
 
 def _polygon(item: dict) -> Polygon:
     return Polygon([(vertex["x"], vertex["y"]) for vertex in item["vertices"]])
+
+
+def _selected_source_svg(data: bytes, selected_groups: set[str]) -> bytes:
+    """Keep only selected cutting groups in a temporary solver SVG copy.
+
+    Excluded oversized/invalid groups must not prevent a valid selection
+    from running. Original uploaded SVG bytes remain unchanged.
+    """
+    from garment_nesting.input.svg import SVG_NS
+
+    root = ET.fromstring(data)
+    group_tag = f"{{{SVG_NS}}}g"
+    path_tag = f"{{{SVG_NS}}}path"
+    for parent in root.iter():
+        for child in list(parent):
+            if (
+                child.tag == group_tag and child.find(path_tag) is not None
+                and child.get("id") not in selected_groups
+            ):
+                parent.remove(child)
+    return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
 
 def prepare_job(sources: dict[str, dict], job: dict) -> tuple[dict, dict]:
@@ -59,6 +81,11 @@ def prepare_job(sources: dict[str, dict], job: dict) -> tuple[dict, dict]:
         None if max_length is None else
         max_length - fabric["fabric_start_margin_in"] - fabric["fabric_end_margin_in"]
     )
+    selected_by_source: dict[str, set[str]] = {}
+    for selected in specs:
+        selected_by_source.setdefault(selected["source_id"], set()).add(
+            selected["group_id"],
+        )
     by_source = {}
     shapes = []
     pieces = []
@@ -76,7 +103,9 @@ def prepare_job(sources: dict[str, dict], job: dict) -> tuple[dict, dict]:
                 raise ValueError("Uploaded SVG filename does not match job selection")
             if source_id not in by_source:
                 path = Path(directory) / f"{len(by_source)}.svg"
-                path.write_bytes(original["content"])
+                path.write_bytes(_selected_source_svg(
+                    original["content"], selected_by_source[source_id],
+                ))
                 source_instance, source_manifest = prepare_instance(
                     path, fabric_width_in=width, clearance_in=0,
                 )
