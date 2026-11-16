@@ -23,11 +23,11 @@ from garment_nesting.processor.packing import prepare_instance
 from garment_nesting.processor.run import solve_instance
 
 MAX_RUN_PIECES = 10_000
-ALGORITHMS = {
-    "shelf": "Deterministic shelf (baseline)",
-    "native": "PackingSolver (native optimizer)",
-}
 EPS = 0.00001
+
+
+class NativeSolverUnavailable(RuntimeError):
+    """Native solver module is not installed or supported in this interpreter."""
 
 
 def _polygon(item: dict) -> Polygon:
@@ -379,7 +379,7 @@ def _native_certificate(instance: dict, time_limit: int) -> dict:
     try:
         import packingsolver.irregular  # noqa: F401
     except ImportError as exc:
-        raise RuntimeError(
+        raise NativeSolverUnavailable(
             "Native PackingSolver unavailable in this Python environment. "
             "The shelf baseline works without it; use a compatible Python "
             "interpreter with pip install -e '.[solver]'."
@@ -394,6 +394,23 @@ def _native_certificate(instance: dict, time_limit: int) -> dict:
         return json.loads(certificate.read_text(encoding="utf-8"))
 
 
+def _shelf_adapter(_instance: dict, manifest: dict) -> dict:
+    return shelf_certificate(manifest)
+
+
+def _native_adapter(instance: dict, manifest: dict) -> dict:
+    return _native_certificate(instance, manifest["fabric"]["time_limit_seconds"])
+
+
+# Plug-in contract: (display label, prepare-once processor callable).
+# New processors can be added here without changing the runner or GUI.
+PROCESSOR_REGISTRY = {
+    "shelf": ("Deterministic shelf (baseline)", _shelf_adapter),
+    "native": ("PackingSolver (native optimizer)", _native_adapter),
+}
+ALGORITHMS = {key: item[0] for key, item in PROCESSOR_REGISTRY.items()}
+
+
 def run_experiments(
     sources: dict[str, dict], job: dict, algorithms: list[str],
 ) -> dict:
@@ -406,12 +423,7 @@ def run_experiments(
     candidates = []
     for name in dict.fromkeys(algorithms):
         try:
-            if name == "shelf":
-                certificate = shelf_certificate(manifest)
-            else:
-                certificate = _native_certificate(
-                    instance, manifest["fabric"]["time_limit_seconds"],
-                )
+            certificate = PROCESSOR_REGISTRY[name][1](instance, manifest)
             report = validate_job_certificate(manifest, certificate)
             candidates.append({
                 "algorithm": name,
@@ -420,12 +432,12 @@ def run_experiments(
                 "report": report,
                 "message": report.get("message", ""),
             })
-        except RuntimeError as exc:
+        except NativeSolverUnavailable as exc:
             candidates.append({
                 "algorithm": name, "name": ALGORITHMS[name],
                 "status": "UNAVAILABLE", "message": str(exc),
             })
-        except (ValueError, TypeError, KeyError, OSError) as exc:
+        except (ValueError, TypeError, KeyError, OSError, RuntimeError) as exc:
             candidates.append({
                 "algorithm": name, "name": ALGORITHMS[name],
                 "status": "ERROR", "message": f"{type(exc).__name__}: {exc}",
